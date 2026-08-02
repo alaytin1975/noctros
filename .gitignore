@@ -21,11 +21,15 @@ Thumbs.db
 
 # Secrets
 .env
-.env.*
+.env.local
+.env.*.local
 *.keystore
 *.jks
 google-services.json
 GoogleService-Info.plist
+
+# Local PR helpers
+pr-v0.2-body.md
 
 # Generated
 *.g.dart

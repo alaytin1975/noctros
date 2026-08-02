@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/usecases/manage_memory_use_case.dart';
-import '../../providers/permission_providers.dart';
 import '../../providers/noctros_providers.dart';
+import '../../providers/openai_providers.dart';
+import '../../providers/permission_providers.dart';
 import '../../widgets/permission_prompt_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -28,6 +29,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     Future.microtask(() async {
       await ref.read(settingsControllerProvider.notifier).load();
       await ref.read(permissionsControllerProvider.notifier).refresh();
+      await ref.read(openAiSettingsProvider.notifier).load();
     });
   }
 
@@ -35,6 +37,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final settingsState = ref.watch(settingsControllerProvider);
     final settings = settingsState.settings;
+    final openAi = ref.watch(openAiSettingsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -51,6 +54,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (value) => _update(
                     settings.copyWith(darkModeEnabled: value),
                   ),
+                ),
+                const SizedBox(height: 8),
+                const _SectionHeader(title: 'OpenAI'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('API key'),
+                  subtitle: Text(
+                    openAi.isConfigured
+                        ? 'Configured (${_maskKey(openAi.apiKey)})'
+                        : 'Not set — add via Settings or .env',
+                  ),
+                  trailing: const Icon(Icons.key_outlined),
+                  onTap: _editApiKey,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Model'),
+                  subtitle: Text(openAi.model),
+                  trailing: const Icon(Icons.tune),
+                  onTap: _editModel,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Speak replies (TTS)'),
+                  subtitle: const Text('Read assistant responses aloud'),
+                  value: openAi.ttsEnabled,
+                  onChanged: (value) => ref
+                      .read(openAiSettingsProvider.notifier)
+                      .setTtsEnabled(value),
                 ),
                 const SizedBox(height: 8),
                 const _SectionHeader(title: 'Permissions'),
@@ -136,6 +168,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _update(UserSettings settings) {
     return ref.read(settingsControllerProvider.notifier).save(settings);
+  }
+
+  String _maskKey(String key) {
+    if (key.length <= 8) {
+      return '••••';
+    }
+    return '${key.substring(0, 3)}••••${key.substring(key.length - 4)}';
+  }
+
+  Future<void> _editApiKey() async {
+    final controller = TextEditingController(
+      text: ref.read(openAiSettingsProvider).apiKey,
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('OpenAI API key'),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          decoration: const InputDecoration(
+            hintText: 'sk-...',
+            helperText: 'Stored securely on device. You can also use .env.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await ref
+                  .read(openAiSettingsProvider.notifier)
+                  .saveApiKey('');
+              if (context.mounted) {
+                Navigator.pop(context, true);
+              }
+            },
+            child: const Text('Clear'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved == true) {
+      await ref
+          .read(openAiSettingsProvider.notifier)
+          .saveApiKey(controller.text);
+    }
+    controller.dispose();
+  }
+
+  Future<void> _editModel() async {
+    final controller = TextEditingController(
+      text: ref.read(openAiSettingsProvider).model,
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('OpenAI model'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'gpt-4o-mini',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved == true && controller.text.trim().isNotEmpty) {
+      await ref
+          .read(openAiSettingsProvider.notifier)
+          .saveModel(controller.text.trim());
+    }
+    controller.dispose();
   }
 
   Future<void> _confirmDeleteMemory() async {

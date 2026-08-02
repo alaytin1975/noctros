@@ -49,9 +49,20 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     }
     state = state.copyWith(
       conversationId: result.valueOrThrow.id,
+      messages: const [],
       isLoading: false,
     );
     await reloadMessages();
+  }
+
+  Future<void> openConversation(String conversationId) async {
+    state = state.copyWith(
+      conversationId: conversationId,
+      isLoading: true,
+      messages: const [],
+    );
+    await reloadMessages();
+    state = state.copyWith(isLoading: false);
   }
 
   Future<void> reloadMessages() async {
@@ -67,6 +78,42 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
 
   void setSending(bool value) {
     state = state.copyWith(isSending: value);
+  }
+}
+
+class ConversationListState {
+  const ConversationListState({
+    this.conversations = const [],
+    this.isLoading = false,
+  });
+
+  final List<Conversation> conversations;
+  final bool isLoading;
+
+  ConversationListState copyWith({
+    List<Conversation>? conversations,
+    bool? isLoading,
+  }) {
+    return ConversationListState(
+      conversations: conversations ?? this.conversations,
+      isLoading: isLoading ?? this.isLoading,
+    );
+  }
+}
+
+class ConversationListController extends StateNotifier<ConversationListState> {
+  ConversationListController(this._conversationRepository)
+      : super(const ConversationListState());
+
+  final ConversationRepository _conversationRepository;
+
+  Future<void> load() async {
+    state = state.copyWith(isLoading: true);
+    final result = await _conversationRepository.listConversations();
+    state = state.copyWith(
+      isLoading: false,
+      conversations: result.isSuccess ? result.valueOrThrow : const [],
+    );
   }
 }
 
@@ -116,6 +163,14 @@ class SettingsController extends StateNotifier<SettingsControllerState> {
 final chatSessionProvider =
     StateNotifierProvider<ChatSessionController, ChatSessionState>((ref) {
   return ChatSessionController(ServiceLocator.get<ConversationRepository>());
+});
+
+final conversationListProvider =
+    StateNotifierProvider<ConversationListController, ConversationListState>(
+        (ref) {
+  return ConversationListController(
+    ServiceLocator.get<ConversationRepository>(),
+  );
 });
 
 final settingsControllerProvider =

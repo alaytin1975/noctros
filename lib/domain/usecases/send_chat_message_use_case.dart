@@ -49,13 +49,15 @@ class SendChatMessageUseCase {
             .join('\n')
         : '';
 
+    final history = historyResult.valueOrThrow;
     final aiResult = await _aiRepository.complete(
       AiRequest(
         prompt: userMessage,
         conversationId: conversationId,
         complexity: complexity,
-        contextMessages: historyResult.valueOrThrow,
-        requiresInternet: complexity == AiTaskComplexity.complex,
+        preferredMode: AiExecutionMode.hybrid,
+        contextMessages: history,
+        requiresInternet: true,
       ),
     );
     if (aiResult is FailureResult<AiResponse>) {

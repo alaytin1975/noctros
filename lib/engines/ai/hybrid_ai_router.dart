@@ -1,18 +1,21 @@
-import '../../../domain/entities/noctros_entities.dart';
-import '../../../domain/entities/noctros_enums.dart';
+import '../../core/config/openai_config_service.dart';
+import '../../domain/entities/noctros_entities.dart';
+import '../../domain/entities/noctros_enums.dart';
 import 'ai_engine.dart';
 
-/// Routes requests between local and cloud providers based on task complexity,
-/// connectivity requirements, and user execution mode preferences.
+/// Routes requests between local and OpenAI cloud providers.
 class HybridAiRouter implements AiEngine {
   HybridAiRouter({
     required AiProvider localProvider,
     required AiProvider cloudProvider,
+    required OpenAiConfigService openAiConfigService,
   })  : _localProvider = localProvider,
-        _cloudProvider = cloudProvider;
+        _cloudProvider = cloudProvider,
+        _openAiConfigService = openAiConfigService;
 
   final AiProvider _localProvider;
   final AiProvider _cloudProvider;
+  final OpenAiConfigService _openAiConfigService;
 
   @override
   Future<AiResponse> complete(AiRequest request) async {
@@ -26,12 +29,20 @@ class HybridAiRouter implements AiEngine {
   }
 
   Future<AiResponse> _completeHybrid(AiRequest request) async {
-    if (_localProvider.canHandle(request)) {
+    final configured = await _openAiConfigService.isConfigured();
+    if (configured) {
       try {
-        return await _localProvider.complete(request);
+        return await _cloudProvider.complete(request);
       } catch (_) {
-        return _cloudProvider.complete(request);
+        if (_localProvider.canHandle(request)) {
+          return _localProvider.complete(request);
+        }
+        rethrow;
       }
+    }
+
+    if (_localProvider.canHandle(request)) {
+      return _localProvider.complete(request);
     }
     return _cloudProvider.complete(request);
   }
@@ -42,15 +53,21 @@ class HybridAiRouter implements AiEngine {
       return request.preferredMode!;
     }
 
+    final configured = await _openAiConfigService.isConfigured();
+
     if (request.requiresInternet ||
         request.complexity == AiTaskComplexity.complex) {
-      return AiExecutionMode.cloud;
+      return configured ? AiExecutionMode.cloud : AiExecutionMode.local;
     }
 
-    if (request.complexity == AiTaskComplexity.lightweight) {
+    if (request.complexity == AiTaskComplexity.lightweight && !configured) {
       return AiExecutionMode.local;
     }
 
-    return AiExecutionMode.hybrid;
+    if (configured) {
+      return AiExecutionMode.hybrid;
+    }
+
+    return AiExecutionMode.local;
   }
 }

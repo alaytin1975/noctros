@@ -1,3 +1,4 @@
+import '../../core/config/openai_config_service.dart';
 import '../../data/local/database/noctros_database.dart';
 import '../../data/local/secure/secure_storage_service.dart';
 import '../../data/repositories/ai_repository_impl.dart';
@@ -9,7 +10,7 @@ import '../../data/services/permission_service.dart';
 import '../../domain/repositories/noctros_repositories.dart';
 import '../../domain/repositories/permission_repository.dart';
 import '../../engines/ai/ai_engine.dart';
-import '../../engines/ai/cloud/cloud_ai_provider.dart';
+import '../../engines/ai/cloud/openai_provider.dart';
 import '../../engines/ai/hybrid_ai_router.dart';
 import '../../engines/ai/local/local_ai_provider.dart';
 import '../../engines/emergency/emergency_engine.dart';
@@ -26,13 +27,19 @@ abstract final class ServiceLocator {
   static Future<void> registerCoreServices() async {
     _registerSingleton<SecureStorageService>(SecureStorageService.new);
     _registerSingleton<NoctrosDatabase>(() => NoctrosDatabase());
+    _registerSingleton<OpenAiConfigService>(
+      () => OpenAiConfigService(secureStorage: get<SecureStorageService>()),
+    );
 
     _registerSingleton<LocalAiProvider>(LocalAiProvider.new);
-    _registerSingleton<CloudAiProvider>(CloudAiProvider.new);
+    _registerSingleton<OpenAiProvider>(
+      () => OpenAiProvider(configService: get<OpenAiConfigService>()),
+    );
     _registerSingleton<AiEngine>(
       () => HybridAiRouter(
         localProvider: get<LocalAiProvider>(),
-        cloudProvider: get<CloudAiProvider>(),
+        cloudProvider: get<OpenAiProvider>(),
+        openAiConfigService: get<OpenAiConfigService>(),
       ),
     );
 
