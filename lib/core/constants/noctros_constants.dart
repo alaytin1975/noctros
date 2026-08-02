@@ -1,0 +1,14 @@
+/// Canonical product and wake-word identifiers for Noctros.
+abstract final class NoctrosConstants {
+  static const appName = 'Noctros';
+  static const defaultWakeWords = ['Hey Noctros', 'Noctros'];
+  static const emergencyPhrases = [
+    'help',
+    'emergency',
+    'i fell',
+    'call 112',
+    'save me',
+  ];
+  static const databaseName = 'noctros.db';
+  static const secureStorageNamespace = 'noctros_secure';
+}
