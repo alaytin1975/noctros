@@ -37,10 +37,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
   Future<Result<UserSettings>> saveSettings(UserSettings settings) async {
     try {
       await _database.upsertSetting(_settingsKey, _toJson(settings));
-      await _secureStorage.write(
-        'cloud_policy',
-        settings.cloudPolicy.name,
-      );
+      await _secureStorage.write('cloud_policy', settings.cloudPolicy.name);
       return Success(settings);
     } catch (error) {
       return FailureResult(
@@ -58,6 +55,11 @@ class SettingsRepositoryImpl implements SettingsRepository {
       'memoryEnabled': settings.memoryEnabled,
       'emergencyAutoDialEnabled': settings.emergencyAutoDialEnabled,
       'darkModeEnabled': settings.darkModeEnabled,
+      'speechRate': settings.speechRate,
+      'ttsEnabled': settings.ttsEnabled,
+      'sttLocaleId': settings.sttLocaleId,
+      'continuousVoiceEnabled': settings.continuousVoiceEnabled,
+      'alwaysListeningPrepared': settings.alwaysListeningPrepared,
       'emergencyContacts': settings.emergencyContacts
           .map(
             (contact) => {
@@ -95,6 +97,12 @@ class SettingsRepositoryImpl implements SettingsRepository {
       emergencyAutoDialEnabled: json['emergencyAutoDialEnabled']! as bool,
       emergencyContacts: contacts,
       darkModeEnabled: json['darkModeEnabled'] as bool? ?? false,
+      speechRate: (json['speechRate'] as num?)?.toDouble() ?? 0.48,
+      ttsEnabled: json['ttsEnabled'] as bool? ?? true,
+      sttLocaleId: json['sttLocaleId'] as String? ?? 'en_US',
+      continuousVoiceEnabled: json['continuousVoiceEnabled'] as bool? ?? false,
+      alwaysListeningPrepared:
+          json['alwaysListeningPrepared'] as bool? ?? false,
     );
   }
 }

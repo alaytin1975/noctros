@@ -39,6 +39,7 @@ class Conversation {
     required this.createdAt,
     required this.updatedAt,
     this.isPinned = false,
+    this.isFavorite = false,
   });
 
   final String id;
@@ -46,6 +47,23 @@ class Conversation {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isPinned;
+  final bool isFavorite;
+
+  Conversation copyWith({
+    String? title,
+    DateTime? updatedAt,
+    bool? isPinned,
+    bool? isFavorite,
+  }) {
+    return Conversation(
+      id: id,
+      title: title ?? this.title,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isPinned: isPinned ?? this.isPinned,
+      isFavorite: isFavorite ?? this.isFavorite,
+    );
+  }
 }
 
 class MemoryEntry {
@@ -78,6 +96,11 @@ class UserSettings {
     required this.emergencyAutoDialEnabled,
     required this.emergencyContacts,
     required this.darkModeEnabled,
+    this.speechRate = 0.48,
+    this.ttsEnabled = true,
+    this.sttLocaleId = 'en_US',
+    this.continuousVoiceEnabled = false,
+    this.alwaysListeningPrepared = false,
   });
 
   final List<String> wakeWords;
@@ -88,6 +111,11 @@ class UserSettings {
   final bool emergencyAutoDialEnabled;
   final List<EmergencyContact> emergencyContacts;
   final bool darkModeEnabled;
+  final double speechRate;
+  final bool ttsEnabled;
+  final String sttLocaleId;
+  final bool continuousVoiceEnabled;
+  final bool alwaysListeningPrepared;
 
   static UserSettings defaults() {
     return const UserSettings(
@@ -111,6 +139,11 @@ class UserSettings {
     bool? emergencyAutoDialEnabled,
     List<EmergencyContact>? emergencyContacts,
     bool? darkModeEnabled,
+    double? speechRate,
+    bool? ttsEnabled,
+    String? sttLocaleId,
+    bool? continuousVoiceEnabled,
+    bool? alwaysListeningPrepared,
   }) {
     return UserSettings(
       wakeWords: wakeWords ?? this.wakeWords,
@@ -123,6 +156,13 @@ class UserSettings {
           emergencyAutoDialEnabled ?? this.emergencyAutoDialEnabled,
       emergencyContacts: emergencyContacts ?? this.emergencyContacts,
       darkModeEnabled: darkModeEnabled ?? this.darkModeEnabled,
+      speechRate: speechRate ?? this.speechRate,
+      ttsEnabled: ttsEnabled ?? this.ttsEnabled,
+      sttLocaleId: sttLocaleId ?? this.sttLocaleId,
+      continuousVoiceEnabled:
+          continuousVoiceEnabled ?? this.continuousVoiceEnabled,
+      alwaysListeningPrepared:
+          alwaysListeningPrepared ?? this.alwaysListeningPrepared,
     );
   }
 }
@@ -149,6 +189,7 @@ class AiRequest {
     this.preferredMode,
     this.contextMessages = const [],
     this.requiresInternet = false,
+    this.memoryContext,
   });
 
   final String prompt;
@@ -157,6 +198,7 @@ class AiRequest {
   final AiExecutionMode? preferredMode;
   final List<ChatMessage> contextMessages;
   final bool requiresInternet;
+  final String? memoryContext;
 }
 
 class AiResponse {

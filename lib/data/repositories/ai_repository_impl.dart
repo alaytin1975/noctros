@@ -23,6 +23,11 @@ class AiRepositoryImpl implements AiRepository {
   }
 
   @override
+  Stream<String> streamComplete(AiRequest request) {
+    return _engine.streamComplete(request);
+  }
+
+  @override
   Future<Result<AiExecutionMode>> resolveMode(AiRequest request) async {
     try {
       final mode = await _engine.resolveMode(request);
@@ -30,7 +35,9 @@ class AiRepositoryImpl implements AiRepository {
     } on NoctrosFailure catch (failure) {
       return FailureResult(failure);
     } catch (error) {
-      return FailureResult(AiFailure('Failed to resolve AI mode.', cause: error));
+      return FailureResult(
+        AiFailure('Failed to resolve AI mode.', cause: error),
+      );
     }
   }
 }

@@ -8,6 +8,8 @@ class OpenAiSettingsState {
     this.apiKey = '',
     this.model = 'gpt-4o-mini',
     this.ttsEnabled = true,
+    this.speechRate = 0.48,
+    this.sttLocaleId = 'en_US',
     this.isConfigured = false,
     this.isLoading = true,
   });
@@ -15,6 +17,8 @@ class OpenAiSettingsState {
   final String apiKey;
   final String model;
   final bool ttsEnabled;
+  final double speechRate;
+  final String sttLocaleId;
   final bool isConfigured;
   final bool isLoading;
 
@@ -22,6 +26,8 @@ class OpenAiSettingsState {
     String? apiKey,
     String? model,
     bool? ttsEnabled,
+    double? speechRate,
+    String? sttLocaleId,
     bool? isConfigured,
     bool? isLoading,
   }) {
@@ -29,6 +35,8 @@ class OpenAiSettingsState {
       apiKey: apiKey ?? this.apiKey,
       model: model ?? this.model,
       ttsEnabled: ttsEnabled ?? this.ttsEnabled,
+      speechRate: speechRate ?? this.speechRate,
+      sttLocaleId: sttLocaleId ?? this.sttLocaleId,
       isConfigured: isConfigured ?? this.isConfigured,
       isLoading: isLoading ?? this.isLoading,
     );
@@ -44,12 +52,12 @@ class OpenAiSettingsController extends StateNotifier<OpenAiSettingsState> {
   Future<void> load() async {
     state = state.copyWith(isLoading: true);
     final key = await _configService.getApiKey() ?? '';
-    final model = await _configService.getModel();
-    final tts = await _configService.isTtsEnabled();
     state = OpenAiSettingsState(
       apiKey: key,
-      model: model,
-      ttsEnabled: tts,
+      model: await _configService.getModel(),
+      ttsEnabled: await _configService.isTtsEnabled(),
+      speechRate: await _configService.getSpeechRate(),
+      sttLocaleId: await _configService.getSttLocale(),
       isConfigured: key.isNotEmpty,
       isLoading: false,
     );
@@ -68,6 +76,16 @@ class OpenAiSettingsController extends StateNotifier<OpenAiSettingsState> {
   Future<void> setTtsEnabled(bool enabled) async {
     await _configService.setTtsEnabled(enabled);
     state = state.copyWith(ttsEnabled: enabled);
+  }
+
+  Future<void> setSpeechRate(double rate) async {
+    await _configService.setSpeechRate(rate);
+    state = state.copyWith(speechRate: rate);
+  }
+
+  Future<void> setSttLocale(String localeId) async {
+    await _configService.setSttLocale(localeId);
+    state = state.copyWith(sttLocaleId: localeId);
   }
 }
 

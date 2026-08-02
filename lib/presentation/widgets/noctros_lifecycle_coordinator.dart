@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/router/app_router.dart';
+import '../../core/constants/noctros_constants.dart';
 import '../../domain/entities/permission_entities.dart';
 import '../features/chat/chat_screen.dart';
+import '../features/emergency/emergency_screen.dart';
 import '../providers/noctros_providers.dart';
 import '../providers/permission_providers.dart';
 import '../providers/voice_providers.dart';
@@ -57,7 +59,10 @@ class _NoctrosLifecycleCoordinatorState
   Future<void> _bootstrap() async {
     await ref.read(settingsControllerProvider.notifier).load();
     await ref.read(permissionsControllerProvider.notifier).refresh();
-    await ref.read(voiceActivationProvider.notifier).initialize();
+    final settings = ref.read(settingsControllerProvider).settings;
+    await ref.read(voiceActivationProvider.notifier).initialize(
+          wakeWords: settings?.wakeWords,
+        );
     await _startVoiceIfAllowed();
     await _promptForMicrophoneIfNeeded();
   }
@@ -94,6 +99,15 @@ class _NoctrosLifecycleCoordinatorState
     await voiceController.start(
       onWakeWordDetected: (wakeWord) {
         if (!mounted) {
+          return;
+        }
+        final isEmergency = NoctrosConstants.emergencyPhrases
+            .any((phrase) => wakeWord.toLowerCase().contains(phrase));
+        if (isEmergency) {
+          ref.read(appRouterProvider).go(EmergencyScreen.routePath);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Emergency phrase detected: $wakeWord')),
+          );
           return;
         }
         ref.read(appRouterProvider).go(ChatScreen.routePath);

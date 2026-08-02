@@ -10,24 +10,30 @@ class ChatSessionState {
     this.messages = const [],
     this.isLoading = false,
     this.isSending = false,
+    this.streamingContent,
   });
 
   final String? conversationId;
   final List<ChatMessage> messages;
   final bool isLoading;
   final bool isSending;
+  final String? streamingContent;
 
   ChatSessionState copyWith({
     String? conversationId,
     List<ChatMessage>? messages,
     bool? isLoading,
     bool? isSending,
+    String? streamingContent,
+    bool clearStreaming = false,
   }) {
     return ChatSessionState(
       conversationId: conversationId ?? this.conversationId,
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
       isSending: isSending ?? this.isSending,
+      streamingContent:
+          clearStreaming ? null : (streamingContent ?? this.streamingContent),
     );
   }
 }
@@ -39,7 +45,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
   final ConversationRepository _conversationRepository;
 
   Future<void> createConversation() async {
-    state = state.copyWith(isLoading: true);
+    state = state.copyWith(isLoading: true, clearStreaming: true);
     final result = await _conversationRepository.createConversation(
       title: 'Noctros Session',
     );
@@ -52,7 +58,6 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       messages: const [],
       isLoading: false,
     );
-    await reloadMessages();
   }
 
   Future<void> openConversation(String conversationId) async {
@@ -60,6 +65,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       conversationId: conversationId,
       isLoading: true,
       messages: const [],
+      clearStreaming: true,
     );
     await reloadMessages();
     state = state.copyWith(isLoading: false);
@@ -72,12 +78,23 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     }
     final result = await _conversationRepository.listMessages(conversationId);
     if (result.isSuccess) {
-      state = state.copyWith(messages: result.valueOrThrow);
+      state = state.copyWith(
+        messages: result.valueOrThrow,
+        clearStreaming: true,
+      );
     }
   }
 
   void setSending(bool value) {
     state = state.copyWith(isSending: value);
+  }
+
+  void setStreamingContent(String? value) {
+    if (value == null) {
+      state = state.copyWith(clearStreaming: true);
+      return;
+    }
+    state = state.copyWith(streamingContent: value);
   }
 }
 
@@ -85,18 +102,26 @@ class ConversationListState {
   const ConversationListState({
     this.conversations = const [],
     this.isLoading = false,
+    this.query = '',
+    this.favoritesOnly = false,
   });
 
   final List<Conversation> conversations;
   final bool isLoading;
+  final String query;
+  final bool favoritesOnly;
 
   ConversationListState copyWith({
     List<Conversation>? conversations,
     bool? isLoading,
+    String? query,
+    bool? favoritesOnly,
   }) {
     return ConversationListState(
       conversations: conversations ?? this.conversations,
       isLoading: isLoading ?? this.isLoading,
+      query: query ?? this.query,
+      favoritesOnly: favoritesOnly ?? this.favoritesOnly,
     );
   }
 }
@@ -107,14 +132,51 @@ class ConversationListController extends StateNotifier<ConversationListState> {
 
   final ConversationRepository _conversationRepository;
 
-  Future<void> load() async {
-    state = state.copyWith(isLoading: true);
-    final result = await _conversationRepository.listConversations();
+  Future<void> load({String? query, bool? favoritesOnly}) async {
+    state = state.copyWith(
+      isLoading: true,
+      query: query ?? state.query,
+      favoritesOnly: favoritesOnly ?? state.favoritesOnly,
+    );
+    final result = await _conversationRepository.listConversations(
+      query: state.query.isEmpty ? null : state.query,
+      favoritesOnly: state.favoritesOnly,
+    );
     state = state.copyWith(
       isLoading: false,
       conversations: result.isSuccess ? result.valueOrThrow : const [],
     );
   }
+
+  Future<void> togglePin(Conversation conversation) async {
+    await _conversationRepository.updateConversation(
+      conversation.copyWith(isPinned: !conversation.isPinned),
+    );
+    await load();
+  }
+
+  Future<void> toggleFavorite(Conversation conversation) async {
+    await _conversationRepository.updateConversation(
+      conversation.copyWith(isFavorite: !conversation.isFavorite),
+    );
+    await load();
+  }
+
+  Future<ResultExport> export(String conversationId) async {
+    final result =
+        await _conversationRepository.exportConversation(conversationId);
+    if (result.isFailure) {
+      return ResultExport(error: result.failureOrNull?.message);
+    }
+    return ResultExport(content: result.valueOrThrow);
+  }
+}
+
+class ResultExport {
+  ResultExport({this.content, this.error});
+
+  final String? content;
+  final String? error;
 }
 
 class SettingsControllerState {
@@ -176,4 +238,8 @@ final conversationListProvider =
 final settingsControllerProvider =
     StateNotifierProvider<SettingsController, SettingsControllerState>((ref) {
   return SettingsController(ServiceLocator.get<SettingsRepository>());
+});
+
+final recentConversationsProvider = Provider<List<Conversation>>((ref) {
+  return ref.watch(conversationListProvider).conversations.take(5).toList();
 });

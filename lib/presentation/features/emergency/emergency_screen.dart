@@ -31,12 +31,10 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
     bool confirmed = false,
   }) async {
     setState(() => _isProcessing = true);
-
     final result = await _triggerEmergencyUseCase.execute(
       detectedPhrase: phrase,
       userConfirmed: confirmed,
     );
-
     setState(() => _isProcessing = false);
 
     if (result.isFailure) {
@@ -44,7 +42,9 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.failureOrNull?.message ?? 'Emergency failed')),
+        SnackBar(
+          content: Text(result.failureOrNull?.message ?? 'Emergency failed'),
+        ),
       );
       return;
     }
@@ -59,7 +59,7 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
         builder: (context) => AlertDialog(
           title: const Text('Confirm emergency response'),
           content: Text(
-            'Noctros detected "$phrase". Do you want to notify emergency contacts and share your location?',
+            'Noctros detected "$phrase". Notify emergency contacts and share location?',
           ),
           actions: [
             TextButton(
@@ -73,7 +73,6 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
           ],
         ),
       );
-
       if (shouldProceed == true) {
         await _trigger(phrase: phrase, confirmed: true);
       }
@@ -86,79 +85,107 @@ class _EmergencyScreenState extends ConsumerState<EmergencyScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Emergency Assistant')),
-      body: Padding(
+      body: ListView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Emergency mode listens for safety phrases with minimal battery usage.',
-              style: theme.textTheme.bodyLarge,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              color: theme.colorScheme.errorContainer,
             ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: NoctrosConstants.emergencyPhrases
-                  .map(
-                    (phrase) => ActionChip(
-                      label: Text(phrase),
-                      onPressed:
-                          _isProcessing ? null : () => _trigger(phrase: phrase),
-                    ),
-                  )
-                  .toList(),
-            ),
-            const SizedBox(height: 24),
-            if (_isProcessing) const LinearProgressIndicator(),
-            if (_lastEvent != null) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Last emergency event',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Phrase: ${_lastEvent!.detectedPhrase}'),
-                      Text('Time: ${_lastEvent!.detectedAt.toLocal()}'),
-                      if (_lastEvent!.latitude != null &&
-                          _lastEvent!.longitude != null)
-                        Text(
-                          'Location: ${_lastEvent!.latitude!.toStringAsFixed(5)}, ${_lastEvent!.longitude!.toStringAsFixed(5)}',
-                        ),
-                      Text(
-                        _lastEvent!.requiresConfirmation
-                            ? 'Awaiting confirmation'
-                            : 'Emergency workflow initiated',
-                      ),
-                    ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Quick SOS',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onErrorContainer,
                   ),
                 ),
-              ),
-            ],
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: theme.colorScheme.error,
-                  foregroundColor: theme.colorScheme.onError,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                const SizedBox(height: 8),
+                Text(
+                  'Voice phrases like “help”, “emergency”, or “save me” can activate this flow. Confirmation is required unless auto-dial is enabled.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
                 ),
-                onPressed: _isProcessing
-                    ? null
-                    : () => _trigger(phrase: 'emergency'),
-                icon: const Icon(Icons.emergency),
-                label: const Text('Trigger Emergency'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.colorScheme.error,
+                      foregroundColor: theme.colorScheme.onError,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    onPressed: _isProcessing
+                        ? null
+                        : () => _trigger(phrase: 'emergency'),
+                    icon: const Icon(Icons.sos),
+                    label: const Text('Trigger SOS now'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Voice emergency phrases',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: NoctrosConstants.emergencyPhrases
+                .map(
+                  (phrase) => ActionChip(
+                    label: Text(phrase),
+                    onPressed:
+                        _isProcessing ? null : () => _trigger(phrase: phrase),
+                  ),
+                )
+                .toList(),
+          ),
+          if (_isProcessing) ...[
+            const SizedBox(height: 16),
+            const LinearProgressIndicator(),
+          ],
+          if (_lastEvent != null) ...[
+            const SizedBox(height: 20),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Last emergency event',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Phrase: ${_lastEvent!.detectedPhrase}'),
+                    Text('Time: ${_lastEvent!.detectedAt.toLocal()}'),
+                    if (_lastEvent!.latitude != null &&
+                        _lastEvent!.longitude != null)
+                      Text(
+                        'Location: ${_lastEvent!.latitude!.toStringAsFixed(5)}, ${_lastEvent!.longitude!.toStringAsFixed(5)}',
+                      ),
+                    Text(
+                      _lastEvent!.requiresConfirmation
+                          ? 'Awaiting confirmation'
+                          : 'Emergency workflow initiated',
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }

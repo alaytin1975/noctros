@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/di/service_locator.dart';
+import '../../../core/config/openai_config_service.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/usecases/manage_memory_use_case.dart';
+import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
 import '../../providers/permission_providers.dart';
@@ -33,6 +36,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
   }
 
+  Future<void> _syncVoiceEngine(OpenAiSettingsState openAi) async {
+    final voice = ServiceLocator.get<VoiceEngine>();
+    await voice.configureVoice(
+      speechRate: openAi.speechRate,
+      localeId: openAi.sttLocaleId,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsState = ref.watch(settingsControllerProvider);
@@ -41,13 +52,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: settingsState.isLoading || settings == null
+      body: settingsState.isLoading || settings == null || openAi.isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
                 const _SectionHeader(title: 'Appearance'),
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('Dark mode'),
                   subtitle: const Text('Use Noctros dark theme'),
                   value: settings.darkModeEnabled,
@@ -63,38 +75,120 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: Text(
                     openAi.isConfigured
                         ? 'Configured (${_maskKey(openAi.apiKey)})'
-                        : 'Not set — add via Settings or .env',
+                        : 'Not set — use Settings or .env',
                   ),
                   trailing: const Icon(Icons.key_outlined),
                   onTap: _editApiKey,
                 ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Model'),
-                  subtitle: Text(openAi.model),
-                  trailing: const Icon(Icons.tune),
-                  onTap: _editModel,
+                DropdownMenu<String>(
+                  initialSelection: openAi.model,
+                  label: const Text('AI model'),
+                  dropdownMenuEntries: OpenAiConfigService.supportedModels
+                      .map(
+                        (model) => DropdownMenuEntry(
+                          value: model,
+                          label: model,
+                        ),
+                      )
+                      .toList(),
+                  onSelected: (value) async {
+                    if (value == null) {
+                      return;
+                    }
+                    await ref
+                        .read(openAiSettingsProvider.notifier)
+                        .saveModel(value);
+                  },
                 ),
+                const SizedBox(height: 8),
+                const _SectionHeader(title: 'Voice'),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Speak replies (TTS)'),
-                  subtitle: const Text('Read assistant responses aloud'),
                   value: openAi.ttsEnabled,
-                  onChanged: (value) => ref
-                      .read(openAiSettingsProvider.notifier)
-                      .setTtsEnabled(value),
+                  onChanged: (value) async {
+                    await ref
+                        .read(openAiSettingsProvider.notifier)
+                        .setTtsEnabled(value);
+                    await _update(settings.copyWith(ttsEnabled: value));
+                  },
+                ),
+                Text('Speech speed', style: Theme.of(context).textTheme.bodyMedium),
+                Slider(
+                  value: openAi.speechRate.clamp(0.2, 1.0),
+                  min: 0.2,
+                  max: 1.0,
+                  divisions: 16,
+                  label: openAi.speechRate.toStringAsFixed(2),
+                  onChanged: (value) async {
+                    await ref
+                        .read(openAiSettingsProvider.notifier)
+                        .setSpeechRate(value);
+                    await _syncVoiceEngine(
+                      ref.read(openAiSettingsProvider),
+                    );
+                    await _update(settings.copyWith(speechRate: value));
+                  },
+                ),
+                DropdownMenu<String>(
+                  initialSelection: openAi.sttLocaleId,
+                  label: const Text('STT language'),
+                  dropdownMenuEntries: OpenAiConfigService.supportedSttLocales
+                      .map(
+                        (locale) => DropdownMenuEntry(
+                          value: locale,
+                          label: locale,
+                        ),
+                      )
+                      .toList(),
+                  onSelected: (value) async {
+                    if (value == null) {
+                      return;
+                    }
+                    await ref
+                        .read(openAiSettingsProvider.notifier)
+                        .setSttLocale(value);
+                    await _syncVoiceEngine(
+                      ref.read(openAiSettingsProvider),
+                    );
+                    await _update(settings.copyWith(sttLocaleId: value));
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Continuous voice conversation'),
+                  subtitle: const Text('Keep listening after each reply'),
+                  value: settings.continuousVoiceEnabled,
+                  onChanged: (value) => _update(
+                    settings.copyWith(continuousVoiceEnabled: value),
+                  ),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Prepare always-listening service'),
+                  subtitle: const Text(
+                    'Battery-aware wake architecture for future background mode',
+                  ),
+                  value: settings.alwaysListeningPrepared,
+                  onChanged: (value) async {
+                    await _update(
+                      settings.copyWith(alwaysListeningPrepared: value),
+                    );
+                    if (value) {
+                      await ServiceLocator.get<VoiceEngine>()
+                          .prepareAlwaysListeningBackgroundService();
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Wake words'),
+                  subtitle: Text(settings.wakeWords.join(', ')),
                 ),
                 const SizedBox(height: 8),
                 const _SectionHeader(title: 'Permissions'),
                 ...corePermissions.map(
                   (permission) => PermissionTile(permission: permission),
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Voice'),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Wake words'),
-                  subtitle: Text(settings.wakeWords.join(', ')),
                 ),
                 const SizedBox(height: 8),
                 const _SectionHeader(title: 'AI & Privacy'),
@@ -103,13 +197,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   label: const Text('AI execution mode'),
                   dropdownMenuEntries: AiExecutionMode.values
                       .map(
-                        (AiExecutionMode mode) => DropdownMenuEntry(
+                        (mode) => DropdownMenuEntry(
                           value: mode,
                           label: mode.name,
                         ),
                       )
                       .toList(),
-                  onSelected: (AiExecutionMode? value) {
+                  onSelected: (value) {
                     if (value == null) {
                       return;
                     }
@@ -122,13 +216,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   label: const Text('Cloud data policy'),
                   dropdownMenuEntries: PrivacyCloudPolicy.values
                       .map(
-                        (PrivacyCloudPolicy policy) => DropdownMenuEntry(
+                        (policy) => DropdownMenuEntry(
                           value: policy,
                           label: policy.name,
                         ),
                       )
                       .toList(),
-                  onSelected: (PrivacyCloudPolicy? value) {
+                  onSelected: (value) {
                     if (value == null) {
                       return;
                     }
@@ -136,26 +230,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
                 const SizedBox(height: 8),
-                const _SectionHeader(title: 'Smart Memory'),
+                const _SectionHeader(title: 'Memory'),
                 SwitchListTile(
-                  title: const Text('Enable memory'),
-                  subtitle: const Text('Noctros remembers only with your permission.'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enable local AI memory'),
+                  subtitle: const Text(
+                    'Remember preferences only with your permission',
+                  ),
                   value: settings.memoryEnabled,
                   onChanged: (value) => _update(
                     settings.copyWith(memoryEnabled: value),
                   ),
                 ),
                 ListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('Delete all memory'),
-                  subtitle: const Text('Permanently erase stored preferences and habits.'),
                   trailing: const Icon(Icons.delete_outline),
                   onTap: _confirmDeleteMemory,
                 ),
                 const SizedBox(height: 8),
                 const _SectionHeader(title: 'Emergency'),
                 SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('Automatic emergency calling'),
-                  subtitle: const Text('Disabled by default. Requires explicit opt-in.'),
+                  subtitle: const Text('Disabled by default'),
                   value: settings.emergencyAutoDialEnabled,
                   onChanged: (value) => _update(
                     settings.copyWith(emergencyAutoDialEnabled: value),
@@ -181,7 +279,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final controller = TextEditingController(
       text: ref.read(openAiSettingsProvider).apiKey,
     );
-    final saved = await showDialog<bool>(
+    final saved = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('OpenAI API key'),
@@ -195,69 +293,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, null),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () async {
-              await ref
-                  .read(openAiSettingsProvider.notifier)
-                  .saveApiKey('');
-              if (context.mounted) {
-                Navigator.pop(context, true);
-              }
-            },
+            onPressed: () => Navigator.pop(context, ''),
             child: const Text('Clear'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, controller.text),
             child: const Text('Save'),
           ),
         ],
       ),
     );
-
-    if (saved == true) {
-      await ref
-          .read(openAiSettingsProvider.notifier)
-          .saveApiKey(controller.text);
-    }
     controller.dispose();
-  }
-
-  Future<void> _editModel() async {
-    final controller = TextEditingController(
-      text: ref.read(openAiSettingsProvider).model,
-    );
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('OpenAI model'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            hintText: 'gpt-4o-mini',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    if (saved == true && controller.text.trim().isNotEmpty) {
-      await ref
-          .read(openAiSettingsProvider.notifier)
-          .saveModel(controller.text.trim());
+    if (saved != null) {
+      await ref.read(openAiSettingsProvider.notifier).saveApiKey(saved);
     }
-    controller.dispose();
   }
 
   Future<void> _confirmDeleteMemory() async {

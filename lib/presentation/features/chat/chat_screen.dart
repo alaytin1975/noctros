@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/service_locator.dart';
+import '../../../core/constants/noctros_constants.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/entities/permission_entities.dart';
@@ -10,7 +13,9 @@ import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
 import '../../providers/permission_providers.dart';
+import '../../widgets/chat_markdown_bubble.dart';
 import '../../widgets/permission_prompt_sheet.dart';
+import '../emergency/emergency_screen.dart';
 import 'chat_history_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -30,6 +35,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   late final VoiceEngine _voiceEngine;
   bool _isListening = false;
   bool _isSpeaking = false;
+  bool _continuous = false;
 
   @override
   void initState() {
@@ -38,6 +44,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _voiceEngine = ServiceLocator.get<VoiceEngine>();
     Future.microtask(() async {
       await ref.read(openAiSettingsProvider.notifier).load();
+      final openAi = ref.read(openAiSettingsProvider);
+      await _voiceEngine.configureVoice(
+        speechRate: openAi.speechRate,
+        localeId: openAi.sttLocaleId,
+      );
       await _ensureConversation();
     });
   }
@@ -60,7 +71,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _toggleVoiceInput() async {
+  Future<void> _toggleVoiceInput({bool continuous = false}) async {
     final micGranted =
         ref.read(permissionsControllerProvider).microphoneGranted;
     if (!micGranted) {
@@ -76,18 +87,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (_isListening) {
       await _voiceEngine.stopListening();
-      setState(() => _isListening = false);
+      setState(() {
+        _isListening = false;
+        _continuous = false;
+      });
       return;
     }
 
-    setState(() => _isListening = true);
+    await _voiceEngine.interruptSpeech();
+    setState(() {
+      _isListening = true;
+      _continuous = continuous;
+    });
+
     await _voiceEngine.startListening(
+      continuous: continuous,
       onResult: (transcript) async {
         if (!mounted) {
           return;
         }
-        setState(() => _isListening = false);
+        if (!_continuous) {
+          setState(() => _isListening = false);
+        }
         if (transcript.isEmpty) {
+          return;
+        }
+        if (NoctrosConstants.emergencyPhrases
+            .any((phrase) => transcript.toLowerCase().contains(phrase))) {
+          if (mounted) {
+            unawaited(
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const EmergencyScreen(),
+                ),
+              ),
+            );
+          }
           return;
         }
         _controller.text = transcript;
@@ -108,36 +143,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
 
-    final openAi = ref.read(openAiSettingsProvider);
-    if (!openAi.isConfigured) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Add your OpenAI API key in Settings or .env to use cloud AI.',
-          ),
-        ),
-      );
-    }
-
     final session = ref.read(chatSessionProvider);
     final conversationId = session.conversationId;
     if (conversationId == null) {
       return;
     }
 
+    await _voiceEngine.interruptSpeech();
     _controller.clear();
     ref.read(chatSessionProvider.notifier).setSending(true);
+    ref.read(chatSessionProvider.notifier).setStreamingContent('');
 
     final result = await _sendMessageUseCase.execute(
       conversationId: conversationId,
       userMessage: text,
-      complexity: AiTaskComplexity.moderate,
+      onStreamChunk: (partial) {
+        ref.read(chatSessionProvider.notifier).setStreamingContent(partial);
+        _scrollToBottom();
+      },
     );
 
     ref.read(chatSessionProvider.notifier).setSending(false);
+    ref.read(chatSessionProvider.notifier).setStreamingContent(null);
 
     if (result.isSuccess) {
       await ref.read(chatSessionProvider.notifier).reloadMessages();
@@ -175,8 +202,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         return;
       }
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
+        _scrollController.position.maxScrollExtent + 80,
+        duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
     });
@@ -187,16 +214,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final session = ref.watch(chatSessionProvider);
     final openAi = ref.watch(openAiSettingsProvider);
     final theme = Theme.of(context);
+    final messages = [
+      ...session.messages,
+      if (session.streamingContent != null)
+        ChatMessage(
+          id: 'streaming',
+          conversationId: session.conversationId ?? '',
+          role: MessageRole.assistant,
+          content: session.streamingContent!,
+          createdAt: DateTime.now().toUtc(),
+        ),
+    ];
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Noctros Chat'),
         actions: [
-          if (_isSpeaking)
+          if (_isSpeaking || session.isSending)
             const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Icon(Icons.volume_up_outlined),
+              padding: EdgeInsets.only(right: 4),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
+          IconButton(
+            tooltip: _continuous ? 'Stop continuous voice' : 'Continuous voice',
+            onPressed: () => _toggleVoiceInput(continuous: !_continuous),
+            icon: Icon(
+              _continuous ? Icons.record_voice_over : Icons.hearing,
+              color: _continuous ? theme.colorScheme.primary : null,
+            ),
+          ),
           IconButton(
             tooltip: 'Chat history',
             onPressed: () {
@@ -224,7 +274,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               color: theme.colorScheme.secondaryContainer,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Text(
-                'OpenAI API key not configured. Add it in Settings or .env. Local fallback may be used.',
+                'OpenAI not configured — offline fallback is active. Add a key in Settings.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSecondaryContainer,
                 ),
@@ -233,10 +283,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Expanded(
             child: session.isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : session.messages.isEmpty
+                : messages.isEmpty
                     ? Center(
                         child: Text(
-                          'Ask Noctros anything.\nTap the mic for speech-to-text.',
+                          'Ask Noctros anything.\nMic for STT · Hold continuous for hands-free chat.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
@@ -245,13 +295,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       )
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: session.messages.length,
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        itemCount: messages.length,
                         itemBuilder: (context, index) {
-                          final message = session.messages[index];
-                          return _MessageBubble(
+                          final message = messages[index];
+                          final streaming = message.id == 'streaming';
+                          return ChatMarkdownBubble(
                             message: message,
-                            onSpeak: message.role == MessageRole.assistant
+                            isStreaming: streaming,
+                            onSpeak: message.role == MessageRole.assistant &&
+                                    !streaming
                                 ? () => _speak(message.content)
                                 : null,
                           );
@@ -261,28 +314,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: session.isSending ? null : _toggleVoiceInput,
+                  IconButton.filledTonal(
+                    onPressed: session.isSending
+                        ? null
+                        : () => _toggleVoiceInput(continuous: false),
                     icon: Icon(
                       _isListening ? Icons.mic : Icons.mic_none_outlined,
-                      color: _isListening
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _controller,
                       minLines: 1,
-                      maxLines: 4,
+                      maxLines: 5,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _sendMessage(),
                       decoration: InputDecoration(
                         hintText: _isListening
-                            ? 'Listening…'
+                            ? (_continuous
+                                ? 'Continuous listening…'
+                                : 'Listening…')
                             : 'Message Noctros…',
                       ),
                     ),
@@ -306,76 +361,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
-    required this.message,
-    this.onSpeak,
-  });
-
-  final ChatMessage message;
-  final VoidCallback? onSpeak;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isUser = message.role == MessageRole.user;
-
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-        ),
-        decoration: BoxDecoration(
-          color: isUser
-              ? theme.colorScheme.primary
-              : theme.cardTheme.color ??
-                  theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              message.content,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: isUser
-                    ? theme.colorScheme.onPrimary
-                    : theme.colorScheme.onSurface,
-              ),
-            ),
-            if (onSpeak != null) ...[
-              const SizedBox(height: 6),
-              InkWell(
-                onTap: onSpeak,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.volume_up_outlined,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Play',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }

@@ -22,6 +22,7 @@ class SendChatMessageUseCase {
     required String conversationId,
     required String userMessage,
     AiTaskComplexity complexity = AiTaskComplexity.moderate,
+    void Function(String partial)? onStreamChunk,
   }) async {
     final userResult = await _conversationRepository.appendMessage(
       ChatMessage(
@@ -45,40 +46,74 @@ class SendChatMessageUseCase {
     final memoryResult = await _memoryRepository.listEntries();
     final memoryContext = memoryResult.isSuccess
         ? memoryResult.valueOrThrow
-            .map((entry) => '${entry.key}: ${entry.value}')
+            .map((entry) => '- ${entry.key}: ${entry.value}')
             .join('\n')
         : '';
 
-    final history = historyResult.valueOrThrow;
-    final aiResult = await _aiRepository.complete(
-      AiRequest(
-        prompt: userMessage,
-        conversationId: conversationId,
-        complexity: complexity,
-        preferredMode: AiExecutionMode.hybrid,
-        contextMessages: history,
-        requiresInternet: true,
-      ),
+    final request = AiRequest(
+      prompt: userMessage,
+      conversationId: conversationId,
+      complexity: complexity,
+      preferredMode: AiExecutionMode.hybrid,
+      contextMessages: historyResult.valueOrThrow,
+      requiresInternet: true,
+      memoryContext: memoryContext,
     );
-    if (aiResult is FailureResult<AiResponse>) {
-      return FailureResult(aiResult.failure);
+
+    final buffer = StringBuffer();
+    var usedOffline = false;
+
+    try {
+      await for (final chunk in _aiRepository.streamComplete(request)) {
+        buffer.write(chunk);
+        onStreamChunk?.call(buffer.toString());
+      }
+    } catch (_) {
+      usedOffline = true;
+      final fallback = await _aiRepository.complete(request);
+      if (fallback is FailureResult<AiResponse>) {
+        return FailureResult(fallback.failure);
+      }
+      buffer
+        ..clear()
+        ..write(fallback.valueOrThrow.content);
+      onStreamChunk?.call(buffer.toString());
+      usedOffline = fallback.valueOrThrow.processedLocally;
     }
 
-    final response = aiResult.valueOrThrow;
-    final enrichedContent = memoryContext.isEmpty
-        ? response.content
-        : response.content;
+    final content = buffer.toString().trim();
+    if (content.isEmpty) {
+      final complete = await _aiRepository.complete(request);
+      if (complete is FailureResult<AiResponse>) {
+        return FailureResult(complete.failure);
+      }
+      return _conversationRepository.appendMessage(
+        ChatMessage(
+          id: _newId(),
+          conversationId: conversationId,
+          role: MessageRole.assistant,
+          content: complete.valueOrThrow.content,
+          createdAt: DateTime.now().toUtc(),
+          metadata: {
+            'modeUsed': complete.valueOrThrow.modeUsed.name,
+            'processedLocally': complete.valueOrThrow.processedLocally,
+            'streamed': false,
+          },
+        ),
+      );
+    }
 
     return _conversationRepository.appendMessage(
       ChatMessage(
         id: _newId(),
         conversationId: conversationId,
         role: MessageRole.assistant,
-        content: enrichedContent,
+        content: content,
         createdAt: DateTime.now().toUtc(),
         metadata: {
-          'modeUsed': response.modeUsed.name,
-          'processedLocally': response.processedLocally,
+          'modeUsed': usedOffline ? 'local' : 'cloud',
+          'processedLocally': usedOffline,
+          'streamed': true,
         },
       ),
     );

@@ -14,8 +14,7 @@ Noctros is a voice-first AI operating system for smartphones — a trusted digit
 ```bash
 git clone https://github.com/alaytin1975/noctros.git
 cd noctros
-copy .env.example .env   # Windows
-# Fill OPENAI_API_KEY in .env, or enter the key later in Settings
+copy .env.example .env
 flutter pub get
 flutter run
 ```
@@ -37,24 +36,18 @@ Clean Architecture with independent engines:
 ```
 lib/
 ├── app/           # Bootstrap, routing, dependency injection
-├── core/          # Config, errors, utilities
+├── core/          # Config, prompts, errors, utilities
 ├── domain/        # Entities, repository contracts, use cases
 ├── data/          # SQLite, secure storage, repositories
-├── presentation/  # UI, themes, feature screens
-└── engines/       # AI (OpenAI + local), Voice, Memory, Emergency
+├── presentation/  # UI, themes, feature screens, Riverpod
+└── engines/       # AI (OpenAI streaming + local), Voice, Memory, Emergency
 ```
 
-## Features
+## v0.4 highlights
 
-- Voice wake words: "Hey Noctros", "Noctros"
-- Speech-to-text and text-to-speech
-- OpenAI chat with local SQLite history
-- Permissions, bottom navigation, dark/light themes
-- Emergency assistant and permission-based memory
-
-## Privacy
-
-- Local processing by default when cloud is unavailable
-- Encrypted secure storage for API keys
-- Cloud AI only when configured
-- Memory is opt-in and fully deletable
+- Streaming OpenAI responses with offline fallback
+- Smarter context window + prompt management
+- Continuous voice conversation + interruption
+- Chat search, favorites, pins, export
+- Markdown chat bubbles and home dashboard
+- Quick SOS emergency workflow

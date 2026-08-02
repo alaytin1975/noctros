@@ -48,13 +48,21 @@ class VoiceActivationController extends StateNotifier<VoiceActivationState> {
   final VoiceEngine _voiceEngine;
   void Function(String wakeWord)? _onWakeWordDetected;
 
-  Future<void> initialize({List<String>? wakeWords}) async {
+  Future<void> initialize({
+    List<String>? wakeWords,
+    double speechRate = 0.48,
+    String localeId = 'en_US',
+  }) async {
     if (state.isInitializing || state.isActive) {
       return;
     }
     state = state.copyWith(isInitializing: true, errorMessage: null);
     try {
-      await _voiceEngine.initialize(wakeWords: wakeWords);
+      await _voiceEngine.initialize(
+        wakeWords: wakeWords,
+        speechRate: speechRate,
+        localeId: localeId,
+      );
       state = state.copyWith(isInitializing: false);
     } catch (error) {
       state = state.copyWith(

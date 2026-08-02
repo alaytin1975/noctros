@@ -14,6 +14,7 @@ class ConversationRecord {
     required this.createdAt,
     required this.updatedAt,
     required this.isPinned,
+    required this.isFavorite,
   });
 
   final String id;
@@ -21,6 +22,7 @@ class ConversationRecord {
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool isPinned;
+  final bool isFavorite;
 }
 
 class MessageRecord {
@@ -82,6 +84,7 @@ class NoctrosDatabase {
     required DateTime createdAt,
     required DateTime updatedAt,
     bool isPinned = false,
+    bool isFavorite = false,
   }) async {
     await db.insert(
       'conversations',
@@ -91,17 +94,39 @@ class NoctrosDatabase {
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
         'is_pinned': isPinned ? 1 : 0,
+        'is_favorite': isFavorite ? 1 : 0,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<List<ConversationRecord>> fetchConversations() async {
+  Future<List<ConversationRecord>> fetchConversations({
+    String? query,
+    bool favoritesOnly = false,
+  }) async {
+    final where = <String>[];
+    final args = <Object?>[];
+
+    if (favoritesOnly) {
+      where.add('is_favorite = 1');
+    }
+    if (query != null && query.trim().isNotEmpty) {
+      where.add('(title LIKE ? OR id IN (SELECT conversation_id FROM messages WHERE content LIKE ?))');
+      final like = '%${query.trim()}%';
+      args.addAll([like, like]);
+    }
+
     final rows = await db.query(
       'conversations',
-      orderBy: 'updated_at DESC',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'is_pinned DESC, updated_at DESC',
     );
     return rows.map(_mapConversation).toList();
+  }
+
+  Future<void> deleteConversation(String id) async {
+    await db.delete('conversations', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> insertMessage({
@@ -123,6 +148,28 @@ class NoctrosDatabase {
         'created_at': createdAt.toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await db.update(
+      'conversations',
+      {'updated_at': DateTime.now().toUtc().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [conversationId],
+    );
+  }
+
+  Future<void> updateMessage({
+    required String id,
+    required String content,
+    Map<String, Object?> metadata = const {},
+  }) async {
+    await db.update(
+      'messages',
+      {
+        'content': content,
+        'metadata_json': jsonEncode(metadata),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 
@@ -166,11 +213,7 @@ class NoctrosDatabase {
   }
 
   Future<void> deleteMemoryEntry(String id) async {
-    await db.delete(
-      'memory_entries',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.delete('memory_entries', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteAllMemoryEntries() async {
@@ -180,10 +223,7 @@ class NoctrosDatabase {
   Future<void> upsertSetting(String key, Map<String, Object?> value) async {
     await db.insert(
       'settings',
-      {
-        'key': key,
-        'value_json': jsonEncode(value),
-      },
+      {'key': key, 'value_json': jsonEncode(value)},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -207,52 +247,75 @@ class NoctrosDatabase {
     final path = p.join(directory.path, NoctrosConstants.databaseName);
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: (database, version) async {
-        await database.execute('''
-          CREATE TABLE conversations (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            is_pinned INTEGER NOT NULL DEFAULT 0
-          )
-        ''');
-        await database.execute('''
-          CREATE TABLE messages (
-            id TEXT PRIMARY KEY,
-            conversation_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            metadata_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-          )
-        ''');
-        await database.execute('''
-          CREATE TABLE memory_entries (
-            id TEXT PRIMARY KEY,
-            category TEXT NOT NULL,
-            entry_key TEXT NOT NULL,
-            entry_value TEXT NOT NULL,
-            source_conversation_id TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-          )
-        ''');
-        await database.execute('''
-          CREATE TABLE settings (
-            key TEXT PRIMARY KEY,
-            value_json TEXT NOT NULL
-          )
-        ''');
-        await database.execute(
-          'CREATE INDEX idx_messages_conversation ON messages(conversation_id)',
-        );
+        await _createV1(database);
+        await _upgradeToV2(database);
       },
+      onUpgrade: (database, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _upgradeToV2(database);
+        }
+      },
+    );
+  }
+
+  Future<void> _createV1(Database database) async {
+    await database.execute('''
+      CREATE TABLE conversations (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        is_pinned INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE memory_entries (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        entry_key TEXT NOT NULL,
+        entry_value TEXT NOT NULL,
+        source_conversation_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX idx_messages_conversation ON messages(conversation_id)',
+    );
+  }
+
+  Future<void> _upgradeToV2(Database database) async {
+    final columns = await database.rawQuery('PRAGMA table_info(conversations)');
+    final names = columns.map((row) => row['name'] as String).toSet();
+    if (!names.contains('is_favorite')) {
+      await database.execute(
+        'ALTER TABLE conversations ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_messages_content ON messages(content)',
     );
   }
 
@@ -263,6 +326,7 @@ class NoctrosDatabase {
       createdAt: DateTime.parse(row['created_at']! as String),
       updatedAt: DateTime.parse(row['updated_at']! as String),
       isPinned: (row['is_pinned']! as int) == 1,
+      isFavorite: ((row['is_favorite'] as int?) ?? 0) == 1,
     );
   }
 
@@ -273,7 +337,8 @@ class NoctrosDatabase {
       role: MessageRole.values.byName(row['role']! as String),
       content: row['content']! as String,
       createdAt: DateTime.parse(row['created_at']! as String),
-      metadata: jsonDecode(row['metadata_json']! as String) as Map<String, Object?>,
+      metadata:
+          jsonDecode(row['metadata_json']! as String) as Map<String, Object?>,
     );
   }
 

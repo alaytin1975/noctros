@@ -41,7 +41,7 @@ class VoiceSession {
   }
 }
 
-/// Voice engine coordinating wake-word detection, STT, and TTS.
+/// Voice engine: wake-word, STT, TTS, interruption, continuous conversation.
 class VoiceEngine {
   VoiceEngine({
     SpeechToText? speechToText,
@@ -55,16 +55,30 @@ class VoiceEngine {
   VoiceSession _session = const VoiceSession(state: VoiceSessionState.idle);
   List<String> _wakeWords = NoctrosConstants.defaultWakeWords;
   bool _wakeWordListening = false;
+  bool _continuousConversation = false;
+  bool _backgroundServicePrepared = false;
   Timer? _wakeWordRestartTimer;
   void Function(String wakeWord)? _wakeWordCallback;
-  Duration _wakeListenDuration = const Duration(seconds: 25);
-  Duration _wakePauseDuration = const Duration(seconds: 3);
+  void Function(String transcript)? _continuousCallback;
+  Duration _wakeListenDuration = const Duration(seconds: 20);
+  Duration _wakePauseDuration = const Duration(seconds: 4);
+  double _speechRate = 0.48;
+  String _localeId = 'en_US';
 
   VoiceSession get session => _session;
   bool get isWakeWordListening => _wakeWordListening;
+  bool get isContinuousConversation => _continuousConversation;
+  bool get isBackgroundServicePrepared => _backgroundServicePrepared;
+  bool get isSpeaking => _session.state == VoiceSessionState.speaking;
 
-  Future<void> initialize({List<String>? wakeWords}) async {
+  Future<void> initialize({
+    List<String>? wakeWords,
+    double speechRate = 0.48,
+    String localeId = 'en_US',
+  }) async {
     _wakeWords = wakeWords ?? NoctrosConstants.defaultWakeWords;
+    _speechRate = speechRate;
+    _localeId = localeId;
     final available = await _speechToText.initialize(
       onStatus: _handleSpeechStatus,
     );
@@ -73,11 +87,50 @@ class VoiceEngine {
         'Speech recognition is unavailable on this device.',
       );
     }
-    await _flutterTts.setSpeechRate(0.48);
+    await _flutterTts.setSpeechRate(_speechRate);
     await _flutterTts.setPitch(1.0);
+    await _flutterTts.awaitSpeakCompletion(true);
+  }
+
+  Future<void> configureVoice({
+    double? speechRate,
+    String? localeId,
+    List<String>? wakeWords,
+  }) async {
+    if (speechRate != null) {
+      _speechRate = speechRate;
+      await _flutterTts.setSpeechRate(speechRate);
+    }
+    if (localeId != null) {
+      _localeId = localeId;
+    }
+    if (wakeWords != null) {
+      _wakeWords = wakeWords;
+    }
+  }
+
+  /// Prepares architecture for a future always-on background wake service.
+  Future<void> prepareAlwaysListeningBackgroundService() async {
+    // Platform foreground-service wiring lands in a later release.
+    // This marks readiness and keeps wake-word cycles battery-aware.
+    _backgroundServicePrepared = true;
+    if (!_wakeWordListening) {
+      await startWakeWordListening(
+        onWakeWordDetected: (_) {},
+        listenDuration: const Duration(seconds: 18),
+        pauseDuration: const Duration(seconds: 5),
+      );
+      await stopWakeWordListening();
+    }
   }
 
   void _handleSpeechStatus(String status) {
+    if (_continuousConversation &&
+        (status == SpeechToText.notListeningStatus ||
+            status == SpeechToText.doneStatus)) {
+      unawaited(_restartContinuousListening());
+      return;
+    }
     if (!_wakeWordListening) {
       return;
     }
@@ -90,7 +143,11 @@ class VoiceEngine {
   Future<void> startListening({
     required void Function(String transcript) onResult,
     void Function(String partial)? onPartial,
+    bool continuous = false,
   }) async {
+    await interruptSpeech();
+    _continuousConversation = continuous;
+    _continuousCallback = continuous ? onResult : null;
     _session = _session.copyWith(
       state: VoiceSessionState.listening,
       partialTranscript: '',
@@ -117,20 +174,39 @@ class VoiceEngine {
       listenOptions: SpeechListenOptions(
         listenMode: ListenMode.dictation,
         partialResults: true,
+        cancelOnError: false,
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(milliseconds: 1200),
+        localeId: _localeId,
       ),
     );
   }
 
+  Future<void> _restartContinuousListening() async {
+    if (!_continuousConversation || _continuousCallback == null) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (!_continuousConversation) {
+      return;
+    }
+    await startListening(
+      onResult: _continuousCallback!,
+      continuous: true,
+    );
+  }
+
   Future<void> stopListening() async {
+    _continuousConversation = false;
+    _continuousCallback = null;
     await _speechToText.stop();
     _session = _session.copyWith(state: VoiceSessionState.idle);
   }
 
-  /// Battery-conscious wake-word loop: short listen windows with pauses.
   Future<void> startWakeWordListening({
     required void Function(String wakeWord) onWakeWordDetected,
-    Duration listenDuration = const Duration(seconds: 25),
-    Duration pauseDuration = const Duration(seconds: 3),
+    Duration listenDuration = const Duration(seconds: 20),
+    Duration pauseDuration = const Duration(seconds: 4),
   }) async {
     if (_wakeWordListening) {
       return;
@@ -176,11 +252,12 @@ class VoiceEngine {
         _wakeWordCallback?.call(wakeWord);
       },
       listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.search,
+        listenMode: ListenMode.confirmation,
         partialResults: true,
         listenFor: _wakeListenDuration,
         pauseFor: _wakePauseDuration,
         cancelOnError: false,
+        localeId: _localeId,
       ),
     );
   }
@@ -195,11 +272,22 @@ class VoiceEngine {
     });
   }
 
-  Future<void> speak(String text, {String languageCode = 'en-US'}) async {
+  Future<void> speak(String text, {String? languageCode}) async {
+    final locale = languageCode ?? _localeId.replaceAll('_', '-');
     _session = _session.copyWith(state: VoiceSessionState.speaking);
-    await _flutterTts.setLanguage(languageCode);
+    await _flutterTts.setLanguage(locale);
+    await _flutterTts.setSpeechRate(_speechRate);
     await _flutterTts.speak(text);
-    _session = _session.copyWith(state: VoiceSessionState.idle);
+    if (_session.state == VoiceSessionState.speaking) {
+      _session = _session.copyWith(state: VoiceSessionState.idle);
+    }
+  }
+
+  Future<void> interruptSpeech() async {
+    await _flutterTts.stop();
+    if (_session.state == VoiceSessionState.speaking) {
+      _session = _session.copyWith(state: VoiceSessionState.idle);
+    }
   }
 
   String? _detectWakeWord(String transcript) {
@@ -207,6 +295,12 @@ class VoiceEngine {
     for (final wakeWord in _wakeWords) {
       if (normalized.contains(wakeWord.toLowerCase())) {
         return wakeWord;
+      }
+    }
+    // Emergency phrases treated as voice emergency activation signals.
+    for (final phrase in NoctrosConstants.emergencyPhrases) {
+      if (normalized.contains(phrase)) {
+        return phrase;
       }
     }
     return null;
