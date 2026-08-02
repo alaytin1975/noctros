@@ -3,8 +3,11 @@ import '../../data/local/secure/secure_storage_service.dart';
 import '../../data/repositories/ai_repository_impl.dart';
 import '../../data/repositories/conversation_repository_impl.dart';
 import '../../data/repositories/memory_repository_impl.dart';
+import '../../data/repositories/permission_repository_impl.dart';
 import '../../data/repositories/settings_repository_impl.dart';
+import '../../data/services/permission_service.dart';
 import '../../domain/repositories/noctros_repositories.dart';
+import '../../domain/repositories/permission_repository.dart';
 import '../../engines/ai/ai_engine.dart';
 import '../../engines/ai/cloud/cloud_ai_provider.dart';
 import '../../engines/ai/hybrid_ai_router.dart';
@@ -47,6 +50,10 @@ abstract final class ServiceLocator {
         secureStorage: get<SecureStorageService>(),
         database: get<NoctrosDatabase>(),
       ),
+    );
+    _registerSingleton<PermissionService>(PermissionService.new);
+    _registerSingleton<PermissionRepository>(
+      () => PermissionRepositoryImpl(service: get<PermissionService>()),
     );
 
     _registerSingleton<MemoryEngine>(

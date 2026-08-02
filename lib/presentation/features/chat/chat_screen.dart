@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/di/service_locator.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/usecases/send_chat_message_use_case.dart';
+import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
+import '../../providers/permission_providers.dart';
+import '../../widgets/permission_prompt_sheet.dart';
+import '../../../domain/entities/permission_entities.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -20,11 +25,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   late final SendChatMessageUseCase _sendMessageUseCase;
+  late final VoiceEngine _voiceEngine;
+  bool _isListening = false;
 
   @override
   void initState() {
     super.initState();
     _sendMessageUseCase = SendChatMessageUseCase();
+    _voiceEngine = ServiceLocator.get<VoiceEngine>();
     Future.microtask(_ensureConversation);
   }
 
@@ -38,9 +46,54 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    if (_isListening) {
+      _voiceEngine.stopListening();
+    }
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    final micGranted =
+        ref.read(permissionsControllerProvider).microphoneGranted;
+    if (!micGranted) {
+      if (!mounted) {
+        return;
+      }
+      await PermissionPromptSheet.show(
+        context,
+        permission: NoctrosPermission.microphone,
+      );
+      return;
+    }
+
+    if (_isListening) {
+      await _voiceEngine.stopListening();
+      setState(() => _isListening = false);
+      return;
+    }
+
+    setState(() => _isListening = true);
+    await _voiceEngine.startListening(
+      onResult: (transcript) async {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _isListening = false);
+        if (transcript.isEmpty) {
+          return;
+        }
+        _controller.text = transcript;
+        await _sendMessage();
+      },
+      onPartial: (partial) {
+        if (!mounted) {
+          return;
+        }
+        _controller.text = partial;
+      },
+    );
   }
 
   Future<void> _sendMessage() async {
@@ -122,6 +175,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Row(
                 children: [
+                  IconButton(
+                    onPressed: session.isSending ? null : _toggleVoiceInput,
+                    icon: Icon(
+                      _isListening ? Icons.mic : Icons.mic_none_outlined,
+                      color: _isListening
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _controller,

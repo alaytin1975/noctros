@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/usecases/manage_memory_use_case.dart';
+import '../../providers/permission_providers.dart';
 import '../../providers/noctros_providers.dart';
+import '../../widgets/permission_prompt_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -23,9 +25,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     _manageMemoryUseCase = ManageMemoryUseCase();
-    Future.microtask(
-      () => ref.read(settingsControllerProvider.notifier).load(),
-    );
+    Future.microtask(() async {
+      await ref.read(settingsControllerProvider.notifier).load();
+      await ref.read(permissionsControllerProvider.notifier).refresh();
+    });
   }
 
   @override
@@ -40,16 +43,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                _SectionHeader(title: 'Voice'),
+                const _SectionHeader(title: 'Appearance'),
                 SwitchListTile(
                   title: const Text('Dark mode'),
+                  subtitle: const Text('Use Noctros dark theme'),
                   value: settings.darkModeEnabled,
                   onChanged: (value) => _update(
                     settings.copyWith(darkModeEnabled: value),
                   ),
                 ),
                 const SizedBox(height: 8),
-                _SectionHeader(title: 'AI & Privacy'),
+                const _SectionHeader(title: 'Permissions'),
+                ...corePermissions.map(
+                  (permission) => PermissionTile(permission: permission),
+                ),
+                const SizedBox(height: 8),
+                const _SectionHeader(title: 'Voice'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Wake words'),
+                  subtitle: Text(settings.wakeWords.join(', ')),
+                ),
+                const SizedBox(height: 8),
+                const _SectionHeader(title: 'AI & Privacy'),
                 DropdownMenu<AiExecutionMode>(
                   initialSelection: settings.aiExecutionMode,
                   label: const Text('AI execution mode'),
@@ -88,7 +104,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   },
                 ),
                 const SizedBox(height: 8),
-                _SectionHeader(title: 'Smart Memory'),
+                const _SectionHeader(title: 'Smart Memory'),
                 SwitchListTile(
                   title: const Text('Enable memory'),
                   subtitle: const Text('Noctros remembers only with your permission.'),
@@ -104,7 +120,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onTap: _confirmDeleteMemory,
                 ),
                 const SizedBox(height: 8),
-                _SectionHeader(title: 'Emergency'),
+                const _SectionHeader(title: 'Emergency'),
                 SwitchListTile(
                   title: const Text('Automatic emergency calling'),
                   subtitle: const Text('Disabled by default. Requires explicit opt-in.'),

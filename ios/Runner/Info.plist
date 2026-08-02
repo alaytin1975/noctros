@@ -66,5 +66,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Noctros uses the microphone for voice commands and "Hey Noctros" wake word detection.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Noctros accesses contacts to notify trusted people during emergencies.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Noctros uses your location to share your position during emergency responses.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Noctros sends notifications for emergencies and important alerts.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Noctros uses speech recognition to understand voice commands.</string>
 </dict>
 </plist>
