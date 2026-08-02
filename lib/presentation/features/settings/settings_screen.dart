@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/di/service_locator.dart';
 import '../../../core/config/openai_config_service.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
+import '../../../domain/usecases/manage_local_data_use_case.dart';
 import '../../../domain/usecases/manage_memory_use_case.dart';
 import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
@@ -24,11 +26,13 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final ManageMemoryUseCase _manageMemoryUseCase;
+  late final ManageLocalDataUseCase _manageLocalDataUseCase;
 
   @override
   void initState() {
     super.initState();
     _manageMemoryUseCase = ManageMemoryUseCase();
+    _manageLocalDataUseCase = ManageLocalDataUseCase();
     Future.microtask(() async {
       await ref.read(settingsControllerProvider.notifier).load();
       await ref.read(permissionsControllerProvider.notifier).refresh();
@@ -242,11 +246,90 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     settings.copyWith(memoryEnabled: value),
                   ),
                 ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Remember preferred contacts'),
+                  subtitle: const Text(
+                    'Only after you approve — never stores phone numbers in logs',
+                  ),
+                  value: settings.rememberPreferredContacts,
+                  onChanged: (value) => _update(
+                    settings.copyWith(rememberPreferredContacts: value),
+                  ),
+                ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Delete all memory'),
                   trailing: const Icon(Icons.delete_outline),
                   onTap: _confirmDeleteMemory,
+                ),
+                const SizedBox(height: 8),
+                const _SectionHeader(title: 'Device assistant'),
+                DropdownMenu<String>(
+                  initialSelection: settings.defaultNavigationApp,
+                  label: const Text('Default navigation app'),
+                  dropdownMenuEntries: const [
+                    DropdownMenuEntry(
+                      value: 'google_maps',
+                      label: 'Google Maps',
+                    ),
+                    DropdownMenuEntry(
+                      value: 'browser',
+                      label: 'Browser maps link',
+                    ),
+                  ],
+                  onSelected: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    _update(settings.copyWith(defaultNavigationApp: value));
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownMenu<String>(
+                  initialSelection: settings.preferredBrowser,
+                  label: const Text('Preferred browser'),
+                  dropdownMenuEntries: const [
+                    DropdownMenuEntry(value: 'default', label: 'System default'),
+                    DropdownMenuEntry(value: 'chrome', label: 'Chrome'),
+                  ],
+                  onSelected: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    _update(settings.copyWith(preferredBrowser: value));
+                  },
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Confirm sensitive actions'),
+                  subtitle: const Text(
+                    'Ask before calls, messages, and navigation',
+                  ),
+                  value: settings.confirmDeviceActions,
+                  onChanged: (value) => _update(
+                    settings.copyWith(confirmDeviceActions: value),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const _SectionHeader(title: 'Privacy & data'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Export local data'),
+                  subtitle: const Text(
+                    'Conversations summary, memory keys, action logs',
+                  ),
+                  trailing: const Icon(Icons.upload_outlined),
+                  onTap: _exportLocalData,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Delete local data'),
+                  subtitle: const Text(
+                    'Clears chats, memory, and action history',
+                  ),
+                  trailing: const Icon(Icons.delete_forever_outlined),
+                  onTap: _confirmDeleteLocalData,
                 ),
                 const SizedBox(height: 8),
                 const _SectionHeader(title: 'Emergency'),
@@ -349,6 +432,76 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           result.isSuccess
               ? 'All memory deleted.'
               : result.failureOrNull?.message ?? 'Failed to delete memory.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportLocalData() async {
+    final result = await _manageLocalDataUseCase.exportLocalData();
+    if (!mounted) {
+      return;
+    }
+    if (result.isFailure) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.failureOrNull?.message ?? 'Export failed.',
+          ),
+        ),
+      );
+      return;
+    }
+    await Share.share(
+      result.valueOrThrow,
+      subject: 'Noctros local data export',
+    );
+  }
+
+  Future<void> _confirmDeleteLocalData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete local data?'),
+        content: const Text(
+          'This clears chats, memory entries, and device action history. '
+          'API keys in secure storage are not deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final result = await _manageLocalDataUseCase.deleteLocalData();
+    if (!mounted) {
+      return;
+    }
+    ref.invalidate(recentActionsProvider);
+    ref.invalidate(favoriteMemoryProvider);
+    await ref.read(conversationListProvider.notifier).load();
+    await ref.read(settingsControllerProvider.notifier).load();
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.isSuccess
+              ? 'Local data deleted.'
+              : result.failureOrNull?.message ?? 'Delete failed.',
         ),
       ),
     );

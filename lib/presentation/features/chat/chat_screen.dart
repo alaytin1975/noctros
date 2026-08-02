@@ -8,7 +8,8 @@ import '../../../core/constants/noctros_constants.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/entities/permission_entities.dart';
-import '../../../domain/usecases/send_chat_message_use_case.dart';
+import '../../../domain/entities/device_action_entities.dart';
+import '../../../domain/usecases/handle_user_command_use_case.dart';
 import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
@@ -31,7 +32,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  late final SendChatMessageUseCase _sendMessageUseCase;
+  late final HandleUserCommandUseCase _handleCommandUseCase;
   late final VoiceEngine _voiceEngine;
   bool _isListening = false;
   bool _isSpeaking = false;
@@ -40,17 +41,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _sendMessageUseCase = SendChatMessageUseCase();
+    _handleCommandUseCase = HandleUserCommandUseCase();
     _voiceEngine = ServiceLocator.get<VoiceEngine>();
     Future.microtask(() async {
       await ref.read(openAiSettingsProvider.notifier).load();
+      await ref.read(settingsControllerProvider.notifier).load();
       final openAi = ref.read(openAiSettingsProvider);
       await _voiceEngine.configureVoice(
         speechRate: openAi.speechRate,
         localeId: openAi.sttLocaleId,
       );
       await _ensureConversation();
+      await _consumePendingCommand();
     });
+  }
+
+  Future<void> _consumePendingCommand() async {
+    final pending = ref.read(pendingCommandProvider);
+    if (pending == null || pending.isEmpty) {
+      return;
+    }
+    ref.read(pendingCommandProvider.notifier).state = null;
+    final conversationId = ref.read(chatSessionProvider).conversationId;
+    if (conversationId == null) {
+      return;
+    }
+    await _processCommand(
+      conversationId: conversationId,
+      userMessage: pending,
+    );
   }
 
   Future<void> _ensureConversation() async {
@@ -151,12 +170,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     await _voiceEngine.interruptSpeech();
     _controller.clear();
+    await _processCommand(
+      conversationId: conversationId,
+      userMessage: text,
+    );
+  }
+
+  Future<void> _processCommand({
+    required String conversationId,
+    required String userMessage,
+    bool userConfirmed = false,
+    ParsedDeviceIntent? confirmedIntent,
+  }) async {
     ref.read(chatSessionProvider.notifier).setSending(true);
     ref.read(chatSessionProvider.notifier).setStreamingContent('');
 
-    final result = await _sendMessageUseCase.execute(
+    final result = await _handleCommandUseCase.execute(
       conversationId: conversationId,
-      userMessage: text,
+      userMessage: userMessage,
+      userConfirmed: userConfirmed,
+      confirmedIntent: confirmedIntent,
       onStreamChunk: (partial) {
         ref.read(chatSessionProvider.notifier).setStreamingContent(partial);
         _scrollToBottom();
@@ -166,22 +199,88 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ref.read(chatSessionProvider.notifier).setSending(false);
     ref.read(chatSessionProvider.notifier).setStreamingContent(null);
 
-    if (result.isSuccess) {
-      await ref.read(chatSessionProvider.notifier).reloadMessages();
-      _scrollToBottom();
-      final reply = result.valueOrThrow;
-      final ttsEnabled = ref.read(openAiSettingsProvider).ttsEnabled;
-      if (ttsEnabled && reply.role == MessageRole.assistant) {
-        await _speak(reply.content);
+    if (!result.isSuccess) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.failureOrNull?.message ?? 'Request failed'),
+        ),
+      );
+      return;
+    }
+
+    final handled = result.valueOrThrow;
+    if (handled.kind == HandleCommandKind.needsConfirmation) {
+      final confirmed = await _confirmDeviceAction(
+        handled.confirmationMessage ??
+            handled.pendingIntent?.displaySummary ??
+            'Perform this device action?',
+      );
+      if (confirmed == true && handled.pendingIntent != null) {
+        await _processCommand(
+          conversationId: conversationId,
+          userMessage: handled.pendingUserMessage ?? userMessage,
+          userConfirmed: true,
+          confirmedIntent: handled.pendingIntent,
+        );
       }
       return;
     }
 
-    if (!mounted) {
-      return;
+    await ref.read(chatSessionProvider.notifier).reloadMessages();
+    ref.invalidate(recentActionsProvider);
+    _scrollToBottom();
+
+    if (handled.enableVoiceMode) {
+      final settings = ref.read(settingsControllerProvider).settings;
+      if (settings != null) {
+        await ref.read(settingsControllerProvider.notifier).save(
+              settings.copyWith(continuousVoiceEnabled: true),
+            );
+      }
+      if (!_continuous) {
+        await _toggleVoiceInput(continuous: true);
+      }
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result.failureOrNull?.message ?? 'Request failed')),
+
+    final reply = handled.assistantMessage;
+    final ttsEnabled = ref.read(openAiSettingsProvider).ttsEnabled;
+    if (ttsEnabled && reply != null && reply.role == MessageRole.assistant) {
+      await _speak(reply.content);
+    }
+
+    final continuousSetting = ref
+            .read(settingsControllerProvider)
+            .settings
+            ?.continuousVoiceEnabled ??
+        false;
+    if (continuousSetting && !_continuous && !_isListening) {
+      await _toggleVoiceInput(continuous: true);
+    }
+  }
+
+  Future<bool?> _confirmDeviceAction(String message) {
+    if (!mounted) {
+      return Future.value(false);
+    }
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm action'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -286,7 +385,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 : messages.isEmpty
                     ? Center(
                         child: Text(
-                          'Ask Noctros anything.\nMic for STT · Hold continuous for hands-free chat.',
+                          'Ask Noctros or give a device command.\n'
+                          'Try “Open Camera”, “Call Mom”, or “Navigate to home”.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,

@@ -247,17 +247,21 @@ class NoctrosDatabase {
     final path = p.join(directory.path, NoctrosConstants.databaseName);
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: (database, version) async {
         await _createV1(database);
         await _upgradeToV2(database);
+        await _upgradeToV3(database);
       },
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _upgradeToV2(database);
+        }
+        if (oldVersion < 3) {
+          await _upgradeToV3(database);
         }
       },
     );
@@ -317,6 +321,61 @@ class NoctrosDatabase {
     await database.execute(
       'CREATE INDEX IF NOT EXISTS idx_messages_content ON messages(content)',
     );
+  }
+
+  Future<void> _upgradeToV3(Database database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS action_logs (
+        id TEXT PRIMARY KEY,
+        action_type TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1,
+        raw_command TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_action_logs_created ON action_logs(created_at)',
+    );
+  }
+
+  Future<void> insertActionLog({
+    required String id,
+    required String actionType,
+    required String summary,
+    required bool success,
+    required DateTime createdAt,
+    String? rawCommand,
+  }) async {
+    await db.insert(
+      'action_logs',
+      {
+        'id': id,
+        'action_type': actionType,
+        'summary': summary,
+        'success': success ? 1 : 0,
+        'raw_command': rawCommand,
+        'created_at': createdAt.toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> fetchActionLogs({int limit = 20}) async {
+    return db.query(
+      'action_logs',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+  }
+
+  Future<void> clearActionLogs() async {
+    await db.delete('action_logs');
+  }
+
+  Future<void> clearConversationsAndMessages() async {
+    await db.delete('messages');
+    await db.delete('conversations');
   }
 
   ConversationRecord _mapConversation(Map<String, Object?> row) {

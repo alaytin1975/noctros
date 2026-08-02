@@ -60,6 +60,10 @@ class SettingsRepositoryImpl implements SettingsRepository {
       'sttLocaleId': settings.sttLocaleId,
       'continuousVoiceEnabled': settings.continuousVoiceEnabled,
       'alwaysListeningPrepared': settings.alwaysListeningPrepared,
+      'defaultNavigationApp': settings.defaultNavigationApp,
+      'preferredBrowser': settings.preferredBrowser,
+      'rememberPreferredContacts': settings.rememberPreferredContacts,
+      'confirmDeviceActions': settings.confirmDeviceActions,
       'emergencyContacts': settings.emergencyContacts
           .map(
             (contact) => {
@@ -103,6 +107,12 @@ class SettingsRepositoryImpl implements SettingsRepository {
       continuousVoiceEnabled: json['continuousVoiceEnabled'] as bool? ?? false,
       alwaysListeningPrepared:
           json['alwaysListeningPrepared'] as bool? ?? false,
+      defaultNavigationApp:
+          json['defaultNavigationApp'] as String? ?? 'google_maps',
+      preferredBrowser: json['preferredBrowser'] as String? ?? 'default',
+      rememberPreferredContacts:
+          json['rememberPreferredContacts'] as bool? ?? false,
+      confirmDeviceActions: json['confirmDeviceActions'] as bool? ?? true,
     );
   }
 }

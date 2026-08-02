@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/noctros_providers.dart';
+import '../../providers/openai_providers.dart';
+import '../../providers/permission_providers.dart';
 import '../chat/chat_screen.dart';
 import '../emergency/emergency_screen.dart';
 import '../settings/settings_screen.dart';
@@ -21,13 +23,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(conversationListProvider.notifier).load());
+    Future.microtask(() async {
+      await ref.read(conversationListProvider.notifier).load();
+      await ref.read(settingsControllerProvider.notifier).load();
+      await ref.read(permissionsControllerProvider.notifier).refresh();
+      await ref.read(openAiSettingsProvider.notifier).load();
+      ref.invalidate(recentActionsProvider);
+      ref.invalidate(favoriteMemoryProvider);
+    });
+  }
+
+  Future<void> _runShortcut(String command) async {
+    await ref.read(chatSessionProvider.notifier).createConversation();
+    ref.read(pendingCommandProvider.notifier).state = command;
+    if (!mounted) {
+      return;
+    }
+    context.go(ChatScreen.routePath);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final recent = ref.watch(recentConversationsProvider);
+    final actionsAsync = ref.watch(recentActionsProvider);
+    final favoritesAsync = ref.watch(favoriteMemoryProvider);
+    final permissions = ref.watch(permissionsControllerProvider);
+    final openAi = ref.watch(openAiSettingsProvider);
+    final settings = ref.watch(settingsControllerProvider).settings;
     final wide = MediaQuery.sizeOf(context).width > 700;
 
     return Scaffold(
@@ -48,7 +71,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Your second brain — voice-first, private, ready.',
+                      'AI device assistant — ask, command, stay in control.',
                       style: theme.textTheme.bodyLarge?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -60,8 +83,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               sliver: SliverToBoxAdapter(
-                child: _DailySummaryCard(
-                  conversationCount: recent.length,
+                child: _DeviceStatusRow(
+                  micReady: permissions.microphoneGranted,
+                  aiReady: openAi.isConfigured,
+                  memoryOn: settings?.memoryEnabled ?? false,
+                  voiceOn: settings?.continuousVoiceEnabled ?? false,
                 ),
               ),
             ),
@@ -88,7 +114,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 delegate: SliverChildListDelegate([
                   _QuickAction(
                     icon: Icons.mic_rounded,
-                    title: 'Talk',
+                    title: 'Voice',
                     subtitle: 'Hey Noctros',
                     onTap: () => context.go(ChatScreen.routePath),
                   ),
@@ -108,10 +134,105 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   _QuickAction(
                     icon: Icons.settings_outlined,
                     title: 'Settings',
-                    subtitle: 'AI & voice',
+                    subtitle: 'Privacy & device',
                     onTap: () => context.go(SettingsScreen.routePath),
                   ),
                 ]),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  'Favorite shortcuts',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverToBoxAdapter(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final shortcut in defaultDeviceShortcuts)
+                      ActionChip(
+                        avatar: Icon(_shortcutIcon(shortcut.iconName), size: 18),
+                        label: Text(shortcut.label),
+                        onPressed: () => _runShortcut(shortcut.command),
+                      ),
+                    ...favoritesAsync.maybeWhen(
+                      data: (entries) => entries.take(4).map(
+                            (entry) => ActionChip(
+                              avatar: const Icon(Icons.star_outline, size: 18),
+                              label: Text(entry.value),
+                              onPressed: () => _runShortcut(
+                                entry.key == 'favorite_destination'
+                                    ? 'Navigate to ${entry.value}'
+                                    : entry.key == 'favorite_app'
+                                        ? 'Open ${entry.value}'
+                                        : entry.value,
+                              ),
+                            ),
+                          ),
+                      orElse: () => const <Widget>[],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  'Recent AI actions',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverToBoxAdapter(
+                child: actionsAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, __) => const Text('Unable to load recent actions.'),
+                  data: (logs) {
+                    if (logs.isEmpty) {
+                      return Text(
+                        'No device actions yet. Try “Open Camera” in chat.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: [
+                        for (final log in logs)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              log.success
+                                  ? Icons.check_circle_outline
+                                  : Icons.error_outline,
+                              color: log.success
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.error,
+                            ),
+                            title: Text(log.summary),
+                            subtitle: Text(
+                              log.createdAt.toLocal().toString().split('.').first,
+                            ),
+                            dense: true,
+                          ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
             SliverPadding(
@@ -138,7 +259,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SliverPadding(
                 padding: EdgeInsets.all(20),
                 sliver: SliverToBoxAdapter(
-                  child: Text('No recent chats yet. Start with “Hey Noctros”.'),
+                  child: Text(
+                    'No recent chats yet. Start with “Hey Noctros”.',
+                  ),
                 ),
               )
             else
@@ -181,51 +304,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(ChatScreen.routePath),
         icon: const Icon(Icons.mic),
-        label: const Text('Hey Noctros'),
+        label: const Text('Voice command'),
       ),
+    );
+  }
+
+  IconData _shortcutIcon(String name) {
+    return switch (name) {
+      'camera' => Icons.photo_camera_outlined,
+      'map' => Icons.map_outlined,
+      'chat' => Icons.chat_outlined,
+      'settings' => Icons.settings_outlined,
+      _ => Icons.bolt_outlined,
+    };
+  }
+}
+
+class _DeviceStatusRow extends StatelessWidget {
+  const _DeviceStatusRow({
+    required this.micReady,
+    required this.aiReady,
+    required this.memoryOn,
+    required this.voiceOn,
+  });
+
+  final bool micReady;
+  final bool aiReady;
+  final bool memoryOn;
+  final bool voiceOn;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _StatusChip(label: 'Mic', ok: micReady),
+        _StatusChip(label: 'Cloud AI', ok: aiReady),
+        _StatusChip(label: 'Memory', ok: memoryOn),
+        _StatusChip(label: 'Voice mode', ok: voiceOn),
+      ],
     );
   }
 }
 
-class _DailySummaryCard extends StatelessWidget {
-  const _DailySummaryCard({required this.conversationCount});
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.ok});
 
-  final int conversationCount;
+  final String label;
+  final bool ok;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer,
-            theme.colorScheme.secondaryContainer.withValues(alpha: 0.8),
-          ],
-        ),
+    return Chip(
+      avatar: Icon(
+        ok ? Icons.check_circle : Icons.cancel_outlined,
+        size: 16,
+        color: ok ? theme.colorScheme.primary : theme.colorScheme.outline,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Daily summary',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            conversationCount == 0
-                ? 'No conversations yet today. Ask Noctros to plan your day.'
-                : 'You have $conversationCount recent conversation${conversationCount == 1 ? '' : 's'}. '
-                    'Tap Talk to continue, or open SOS if you need help.',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ],
-      ),
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

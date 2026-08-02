@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/di/service_locator.dart';
+import '../../domain/entities/device_action_entities.dart';
 import '../../domain/entities/noctros_entities.dart';
+import '../../domain/repositories/action_log_repository.dart';
 import '../../domain/repositories/noctros_repositories.dart';
 
 class ChatSessionState {
@@ -243,3 +245,65 @@ final settingsControllerProvider =
 final recentConversationsProvider = Provider<List<Conversation>>((ref) {
   return ref.watch(conversationListProvider).conversations.take(5).toList();
 });
+
+final recentActionsProvider =
+    FutureProvider<List<DeviceActionLog>>((ref) async {
+  final result =
+      await ServiceLocator.get<ActionLogRepository>().listRecent(limit: 8);
+  if (result.isFailure) {
+    return const [];
+  }
+  return result.valueOrThrow;
+});
+
+final favoriteMemoryProvider =
+    FutureProvider<List<MemoryEntry>>((ref) async {
+  final result = await ServiceLocator.get<MemoryRepository>().listEntries();
+  if (result.isFailure) {
+    return const [];
+  }
+  return result.valueOrThrow
+      .where(
+        (entry) =>
+            entry.key == 'favorite_app' ||
+            entry.key == 'favorite_destination' ||
+            entry.key == 'preferred_contact' ||
+            entry.key == 'frequent_command',
+      )
+      .toList();
+});
+
+/// Pending command queued from Home shortcuts into Chat.
+final pendingCommandProvider = StateProvider<String?>((ref) => null);
+
+/// Default home shortcuts for fast device actions.
+const defaultDeviceShortcuts = <DeviceShortcut>[
+  DeviceShortcut(
+    id: 'camera',
+    label: 'Camera',
+    command: 'Open Camera',
+    iconName: 'camera',
+    isFavorite: true,
+  ),
+  DeviceShortcut(
+    id: 'maps',
+    label: 'Navigate home',
+    command: 'Navigate to home',
+    iconName: 'map',
+    isFavorite: true,
+  ),
+  DeviceShortcut(
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    command: 'Open WhatsApp',
+    iconName: 'chat',
+    isFavorite: true,
+  ),
+  DeviceShortcut(
+    id: 'settings',
+    label: 'Settings',
+    command: 'Open Settings',
+    iconName: 'settings',
+    isFavorite: true,
+  ),
+];

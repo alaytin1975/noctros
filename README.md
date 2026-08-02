@@ -40,14 +40,29 @@ lib/
 ├── domain/        # Entities, repository contracts, use cases
 ├── data/          # SQLite, secure storage, repositories
 ├── presentation/  # UI, themes, feature screens, Riverpod
-└── engines/       # AI (OpenAI streaming + local), Voice, Memory, Emergency
+└── engines/       # AI, Voice, Memory, Emergency, Automation
 ```
 
-## v0.4 highlights
+### Device assistant flow (v0.5)
+
+1. User text/voice enters Chat  
+2. `IntentParser` matches structured device intents  
+3. `AiOrchestrator` routes to `DeviceActionEngine` or AI chat fallback  
+4. Sensitive actions (call / SMS / navigation) require confirmation  
+5. Safe action logs + optional memory (user-approved)
+
+## v0.5 highlights
+
+- Open apps, dialer, SMS, email, Maps, contacts, calendar, clock, camera, gallery, browser, system settings
+- Natural voice/text commands (“Call John”, “Open WhatsApp”, “Navigate to home”)
+- Extensible intent parser + central AI orchestrator
+- Home dashboard: quick actions, shortcuts, recent AI actions, device status
+- Memory for favorite apps/destinations/commands (contacts only with approval)
+- Privacy controls: confirmations, export/delete local data, permissions overview
+
+## v0.4 highlights (preserved)
 
 - Streaming OpenAI responses with offline fallback
-- Smarter context window + prompt management
 - Continuous voice conversation + interruption
 - Chat search, favorites, pins, export
-- Markdown chat bubbles and home dashboard
-- Quick SOS emergency workflow
+- Markdown chat bubbles and Quick SOS

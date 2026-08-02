@@ -1,0 +1,381 @@
+import 'dart:io';
+
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../domain/entities/device_action_entities.dart';
+import '../../domain/repositories/noctros_repositories.dart';
+
+/// Executes secure, user-approved device intents via platform launchers.
+class DeviceActionEngine {
+  DeviceActionEngine({required SettingsRepository settingsRepository})
+      : _settingsRepository = settingsRepository;
+
+  final SettingsRepository _settingsRepository;
+
+  static const knownApps = <String, String>{
+    'whatsapp': 'com.whatsapp',
+    'spotify': 'com.spotify.music',
+    'youtube': 'com.google.android.youtube',
+    'gmail': 'com.google.android.gm',
+    'maps': 'com.google.android.apps.maps',
+    'chrome': 'com.android.chrome',
+    'instagram': 'com.instagram.android',
+    'telegram': 'org.telegram.messenger',
+    'messages': 'com.google.android.apps.messaging',
+    'phone': 'com.google.android.dialer',
+    'camera': 'com.android.camera',
+    'photos': 'com.google.android.apps.photos',
+    'clock': 'com.google.android.deskclock',
+    'calendar': 'com.google.android.calendar',
+    'contacts': 'com.google.android.contacts',
+  };
+
+  Future<DeviceActionResult> execute(
+    ParsedDeviceIntent intent, {
+    bool userConfirmed = false,
+  }) async {
+    final settings = await _settingsRepository.loadSettings();
+    final confirmEnabled = settings.isSuccess
+        ? settings.valueOrThrow.confirmDeviceActions
+        : true;
+
+    if (intent.requiresConfirmation && confirmEnabled && !userConfirmed) {
+      return DeviceActionResult(
+        success: false,
+        message: 'Confirmation required: ${intent.displaySummary}',
+        needsConfirmation: true,
+        pendingIntent: intent,
+      );
+    }
+
+    try {
+      switch (intent.type) {
+        case DeviceActionType.call:
+          return _launchCall(intent);
+        case DeviceActionType.sms:
+          return _launchSms(intent);
+        case DeviceActionType.email:
+          return _launchEmail(intent);
+        case DeviceActionType.navigate:
+          return _launchNavigation(intent);
+        case DeviceActionType.openBrowser:
+          return _launchBrowser(intent);
+        case DeviceActionType.openSettings:
+          return _launchSettings(intent);
+        case DeviceActionType.openContacts:
+          return _launchAndroidAction(
+            action: 'android.intent.action.VIEW',
+            data: 'content://contacts/people',
+            fallbackPackage: knownApps['contacts'],
+            summary: 'Opened Contacts',
+          );
+        case DeviceActionType.openCalendar:
+          return _launchAndroidAction(
+            action: 'android.intent.action.MAIN',
+            package: knownApps['calendar'],
+            summary: 'Opened Calendar',
+          );
+        case DeviceActionType.openClock:
+          return _launchAndroidAction(
+            action: 'android.intent.action.SHOW_ALARMS',
+            package: knownApps['clock'],
+            summary: 'Opened Clock',
+          );
+        case DeviceActionType.openCamera:
+          return _launchAndroidAction(
+            action: 'android.media.action.IMAGE_CAPTURE',
+            summary: 'Opened Camera',
+          );
+        case DeviceActionType.openGallery:
+          return _launchAndroidAction(
+            action: 'android.intent.action.VIEW',
+            type: 'image/*',
+            package: knownApps['photos'],
+            summary: 'Opened Gallery',
+          );
+        case DeviceActionType.openApp:
+          return _launchApp(intent);
+        case DeviceActionType.enableVoiceMode:
+          return const DeviceActionResult(
+            success: true,
+            message:
+                'Voice mode enabled. Continuous listening is ready in Chat.',
+          );
+        case DeviceActionType.unknown:
+          return const DeviceActionResult(
+            success: false,
+            message: 'No device action matched.',
+          );
+      }
+    } catch (error) {
+      return DeviceActionResult(
+        success: false,
+        message: 'Could not complete action: $error',
+      );
+    }
+  }
+
+  Future<DeviceActionResult> _launchCall(ParsedDeviceIntent intent) async {
+    final number = intent.parameters['phoneNumber'];
+    final contact = intent.parameters['contactName'];
+    if (number != null && number.isNotEmpty) {
+      final uri = Uri(scheme: 'tel', path: number.replaceAll(' ', ''));
+      final ok = await _launchUri(uri);
+      return DeviceActionResult(
+        success: ok,
+        launchedExternally: ok,
+        message: ok
+            ? 'Opening dialer for $number'
+            : 'Unable to open the phone dialer.',
+      );
+    }
+    final ok = await _launchAndroidAction(
+      action: 'android.intent.action.DIAL',
+      summary: 'Opening dialer for $contact',
+    );
+    return DeviceActionResult(
+      success: ok.success,
+      launchedExternally: ok.launchedExternally,
+      message: ok.success
+          ? 'Opening dialer. Select "$contact" to place the call.'
+          : 'Unable to open dialer for $contact.',
+    );
+  }
+
+  Future<DeviceActionResult> _launchSms(ParsedDeviceIntent intent) async {
+    final recipient = intent.parameters['recipient'] ?? '';
+    final body = intent.parameters['body'] ?? '';
+    final uri = Uri(
+      scheme: 'sms',
+      path: recipient,
+      queryParameters: body.isEmpty ? null : {'body': body},
+    );
+    final ok = await _launchUri(uri);
+    return DeviceActionResult(
+      success: ok,
+      launchedExternally: ok,
+      message: ok
+          ? 'Opening Messages for $recipient'
+          : 'Unable to open the SMS app.',
+    );
+  }
+
+  Future<DeviceActionResult> _launchEmail(ParsedDeviceIntent intent) async {
+    final email = intent.parameters['email'] ?? '';
+    final subject = intent.parameters['subject'] ?? '';
+    final body = intent.parameters['body'] ?? '';
+    final uri = Uri(
+      scheme: 'mailto',
+      path: email,
+      queryParameters: {
+        if (subject.isNotEmpty) 'subject': subject,
+        if (body.isNotEmpty) 'body': body,
+      },
+    );
+    final ok = await _launchUri(uri);
+    return DeviceActionResult(
+      success: ok,
+      launchedExternally: ok,
+      message: ok ? 'Opening email to $email' : 'Unable to open email app.',
+    );
+  }
+
+  Future<DeviceActionResult> _launchNavigation(ParsedDeviceIntent intent) async {
+    final destination = intent.parameters['destination'] ?? '';
+    final settings = await _settingsRepository.loadSettings();
+    final navPref = settings.isSuccess
+        ? settings.valueOrThrow.defaultNavigationApp
+        : 'google_maps';
+
+    if (!kIsWeb && Platform.isAndroid && navPref == 'google_maps') {
+      final mapsIntent = AndroidIntent(
+        action: 'android.intent.action.VIEW',
+        data: 'google.navigation:q=${Uri.encodeComponent(destination)}',
+        package: knownApps['maps'],
+      );
+      try {
+        await mapsIntent.launch();
+        return DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: 'Starting navigation to $destination',
+        );
+      } catch (_) {}
+    }
+
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(destination)}',
+    );
+    final ok = await _launchUri(uri);
+    return DeviceActionResult(
+      success: ok,
+      launchedExternally: ok,
+      message: ok
+          ? 'Opening maps for $destination'
+          : 'Unable to open navigation.',
+    );
+  }
+
+  Future<DeviceActionResult> _launchBrowser(ParsedDeviceIntent intent) async {
+    final url = intent.parameters['url'] ?? 'https://www.google.com';
+    final settings = await _settingsRepository.loadSettings();
+    final browser = settings.isSuccess
+        ? settings.valueOrThrow.preferredBrowser
+        : 'default';
+
+    if (!kIsWeb && Platform.isAndroid && browser == 'chrome') {
+      final intentChrome = AndroidIntent(
+        action: 'android.intent.action.VIEW',
+        data: url,
+        package: knownApps['chrome'],
+      );
+      try {
+        await intentChrome.launch();
+        return DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: 'Opened Chrome: $url',
+        );
+      } catch (_) {}
+    }
+
+    final ok = await _launchUri(Uri.parse(url));
+    return DeviceActionResult(
+      success: ok,
+      launchedExternally: ok,
+      message: ok ? 'Opened browser: $url' : 'Unable to open browser.',
+    );
+  }
+
+  Future<DeviceActionResult> _launchSettings(ParsedDeviceIntent intent) async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const DeviceActionResult(
+        success: false,
+        message: 'System settings are available on Android devices.',
+      );
+    }
+
+    final targetName = intent.parameters['target'] ?? 'main';
+    final target = DeviceSettingsTarget.values.firstWhere(
+      (value) => value.name == targetName,
+      orElse: () => DeviceSettingsTarget.main,
+    );
+
+    final action = switch (target) {
+      DeviceSettingsTarget.wifi => 'android.settings.WIFI_SETTINGS',
+      DeviceSettingsTarget.bluetooth => 'android.settings.BLUETOOTH_SETTINGS',
+      DeviceSettingsTarget.display => 'android.settings.DISPLAY_SETTINGS',
+      DeviceSettingsTarget.sound => 'android.settings.SOUND_SETTINGS',
+      DeviceSettingsTarget.location =>
+        'android.settings.LOCATION_SOURCE_SETTINGS',
+      DeviceSettingsTarget.apps => 'android.settings.APPLICATION_SETTINGS',
+      DeviceSettingsTarget.battery => 'android.settings.BATTERY_SAVER_SETTINGS',
+      DeviceSettingsTarget.security => 'android.settings.SECURITY_SETTINGS',
+      DeviceSettingsTarget.main => 'android.settings.SETTINGS',
+    };
+
+    await AndroidIntent(action: action).launch();
+    return DeviceActionResult(
+      success: true,
+      launchedExternally: true,
+      message: 'Opened ${target.name} settings',
+    );
+  }
+
+  Future<DeviceActionResult> _launchApp(ParsedDeviceIntent intent) async {
+    final appName = (intent.parameters['appName'] ?? '').toLowerCase();
+    String? package = knownApps[appName];
+    package ??= () {
+      for (final entry in knownApps.entries) {
+        if (appName.contains(entry.key)) {
+          return entry.value;
+        }
+      }
+      return null;
+    }();
+
+    if (package == null) {
+      final market = Uri.parse('market://search?q=$appName');
+      final ok = await _launchUri(market);
+      return DeviceActionResult(
+        success: ok,
+        launchedExternally: ok,
+        message: ok
+            ? 'Could not find "$appName" installed. Opened store search.'
+            : 'App "$appName" is not recognized on this device.',
+      );
+    }
+
+    if (kIsWeb || !Platform.isAndroid) {
+      return DeviceActionResult(
+        success: false,
+        message: 'Opening "$appName" requires Android.',
+      );
+    }
+
+    await AndroidIntent(
+      action: 'android.intent.action.MAIN',
+      package: package,
+      category: 'android.intent.category.LAUNCHER',
+      flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+    ).launch();
+    return DeviceActionResult(
+      success: true,
+      launchedExternally: true,
+      message: 'Opening $appName',
+    );
+  }
+
+  Future<DeviceActionResult> _launchAndroidAction({
+    required String action,
+    String? data,
+    String? type,
+    String? package,
+    String? fallbackPackage,
+    required String summary,
+  }) async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return DeviceActionResult(
+        success: false,
+        message: '$summary is available on Android.',
+      );
+    }
+    try {
+      await AndroidIntent(
+        action: action,
+        data: data,
+        type: type,
+        package: package ?? fallbackPackage,
+        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+      ).launch();
+      return DeviceActionResult(
+        success: true,
+        launchedExternally: true,
+        message: summary,
+      );
+    } catch (_) {
+      if (fallbackPackage != null && package == null) {
+        return _launchAndroidAction(
+          action: 'android.intent.action.MAIN',
+          package: fallbackPackage,
+          summary: summary,
+        );
+      }
+      return DeviceActionResult(
+        success: false,
+        message: 'Unable to complete: $summary',
+      );
+    }
+  }
+
+  Future<bool> _launchUri(Uri uri) async {
+    try {
+      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+}

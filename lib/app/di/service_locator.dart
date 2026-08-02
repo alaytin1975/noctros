@@ -1,18 +1,23 @@
 import '../../core/config/openai_config_service.dart';
 import '../../data/local/database/noctros_database.dart';
 import '../../data/local/secure/secure_storage_service.dart';
+import '../../data/repositories/action_log_repository_impl.dart';
 import '../../data/repositories/ai_repository_impl.dart';
 import '../../data/repositories/conversation_repository_impl.dart';
 import '../../data/repositories/memory_repository_impl.dart';
 import '../../data/repositories/permission_repository_impl.dart';
 import '../../data/repositories/settings_repository_impl.dart';
 import '../../data/services/permission_service.dart';
+import '../../domain/repositories/action_log_repository.dart';
 import '../../domain/repositories/noctros_repositories.dart';
 import '../../domain/repositories/permission_repository.dart';
 import '../../engines/ai/ai_engine.dart';
 import '../../engines/ai/cloud/openai_provider.dart';
 import '../../engines/ai/hybrid_ai_router.dart';
 import '../../engines/ai/local/local_ai_provider.dart';
+import '../../engines/automation/ai_orchestrator.dart';
+import '../../engines/automation/device_action_engine.dart';
+import '../../engines/automation/intent_parser.dart';
 import '../../engines/emergency/emergency_engine.dart';
 import '../../engines/memory/memory_engine.dart';
 import '../../engines/voice/voice_engine.dart';
@@ -65,6 +70,24 @@ abstract final class ServiceLocator {
 
     _registerSingleton<MemoryEngine>(
       () => MemoryEngine(repository: get<MemoryRepository>()),
+    );
+    _registerSingleton<ActionLogRepository>(
+      () => ActionLogRepositoryImpl(database: get<NoctrosDatabase>()),
+    );
+    _registerSingleton<IntentParser>(IntentParser.new);
+    _registerSingleton<DeviceActionEngine>(
+      () => DeviceActionEngine(
+        settingsRepository: get<SettingsRepository>(),
+      ),
+    );
+    _registerSingleton<AiOrchestrator>(
+      () => AiOrchestrator(
+        intentParser: get<IntentParser>(),
+        deviceActionEngine: get<DeviceActionEngine>(),
+        actionLogRepository: get<ActionLogRepository>(),
+        memoryRepository: get<MemoryRepository>(),
+        settingsRepository: get<SettingsRepository>(),
+      ),
     );
     _registerSingleton<VoiceEngine>(VoiceEngine.new);
     _registerSingleton<EmergencyEngine>(EmergencyEngine.new);

@@ -101,6 +101,10 @@ class UserSettings {
     this.sttLocaleId = 'en_US',
     this.continuousVoiceEnabled = false,
     this.alwaysListeningPrepared = false,
+    this.defaultNavigationApp = 'google_maps',
+    this.preferredBrowser = 'default',
+    this.rememberPreferredContacts = false,
+    this.confirmDeviceActions = true,
   });
 
   final List<String> wakeWords;
@@ -116,6 +120,10 @@ class UserSettings {
   final String sttLocaleId;
   final bool continuousVoiceEnabled;
   final bool alwaysListeningPrepared;
+  final String defaultNavigationApp;
+  final String preferredBrowser;
+  final bool rememberPreferredContacts;
+  final bool confirmDeviceActions;
 
   static UserSettings defaults() {
     return const UserSettings(
@@ -144,6 +152,10 @@ class UserSettings {
     String? sttLocaleId,
     bool? continuousVoiceEnabled,
     bool? alwaysListeningPrepared,
+    String? defaultNavigationApp,
+    String? preferredBrowser,
+    bool? rememberPreferredContacts,
+    bool? confirmDeviceActions,
   }) {
     return UserSettings(
       wakeWords: wakeWords ?? this.wakeWords,
@@ -163,6 +175,12 @@ class UserSettings {
           continuousVoiceEnabled ?? this.continuousVoiceEnabled,
       alwaysListeningPrepared:
           alwaysListeningPrepared ?? this.alwaysListeningPrepared,
+      defaultNavigationApp:
+          defaultNavigationApp ?? this.defaultNavigationApp,
+      preferredBrowser: preferredBrowser ?? this.preferredBrowser,
+      rememberPreferredContacts:
+          rememberPreferredContacts ?? this.rememberPreferredContacts,
+      confirmDeviceActions: confirmDeviceActions ?? this.confirmDeviceActions,
     );
   }
 }
