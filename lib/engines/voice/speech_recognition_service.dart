@@ -12,6 +12,7 @@ import '../../core/config/openai_config_service.dart';
 import '../../core/errors/noctros_failure.dart';
 import '../../domain/entities/noctros_enums.dart';
 import 'noise_filter.dart';
+import 'voice_pipeline_log.dart';
 
 typedef PartialTranscriptCallback = void Function(String partial);
 typedef FinalTranscriptCallback = void Function(
@@ -20,7 +21,7 @@ typedef FinalTranscriptCallback = void Function(
   double confidence,
 });
 
-/// Offline-first STT with automatic cloud (Whisper) fallback and recovery.
+/// Offline-first STT with optional cloud (Whisper) fallback.
 class SpeechRecognitionService {
   SpeechRecognitionService({
     SpeechToText? speechToText,
@@ -45,6 +46,7 @@ class SpeechRecognitionService {
       _recorder ??= (_recorderOverride ?? AudioRecorder());
 
   bool _initialized = false;
+  bool _offlineAvailable = false;
   bool _listening = false;
   String _localeId = 'en_US';
   SttBackend _backend = SttBackend.auto;
@@ -53,6 +55,7 @@ class SpeechRecognitionService {
 
   bool get isListening => _listening || _speechToText.isListening;
   bool get isAvailable => _initialized;
+  bool get isOfflineSttAvailable => _offlineAvailable && _speechToText.isAvailable;
 
   Future<void> initialize({
     String localeId = 'en_US',
@@ -62,6 +65,7 @@ class SpeechRecognitionService {
     _localeId = localeId;
     _backend = backend;
     _cloudFallbackEnabled = cloudFallbackEnabled;
+
     final available = await _speechToText.initialize(
       onStatus: (status) {
         _syncListeningFromStatus(status);
@@ -69,19 +73,49 @@ class SpeechRecognitionService {
       },
       onError: (error) {
         _listening = false;
-        onStatus?.call('error:${error.errorMsg}');
+        final msg = 'error:${error.errorMsg}';
+        VoicePipelineLog.fail('STT error', msg);
+        onStatus?.call(msg);
       },
+      // Avoid hard dependency on Bluetooth permissions for wake listening.
+      options: [SpeechToText.androidNoBluetooth],
     );
+
+    _offlineAvailable = available;
+    _initialized = available || _cloudFallbackEnabled;
+
+    VoicePipelineLog.stage(
+      'STT initialized',
+      'offline=$available cloudFallback=$_cloudFallbackEnabled locale=$_localeId',
+    );
+
+    if (!_initialized) {
+      throw const VoiceFailure(
+        'Speech recognition is unavailable on this device.',
+      );
+    }
     if (!available && _backend == SttBackend.offline) {
       throw const VoiceFailure(
         'Offline speech recognition is unavailable on this device.',
       );
     }
-    _initialized = available || _cloudFallbackEnabled;
-    if (!_initialized) {
-      throw const VoiceFailure(
-        'Speech recognition is unavailable on this device.',
+  }
+
+  /// Re-run initialize if offline STT dropped or never became ready.
+  Future<bool> ensureInitialized() async {
+    if (_offlineAvailable && _speechToText.isAvailable) {
+      return true;
+    }
+    try {
+      await initialize(
+        localeId: _localeId,
+        backend: _backend,
+        cloudFallbackEnabled: _cloudFallbackEnabled,
       );
+      return _offlineAvailable;
+    } catch (error) {
+      VoicePipelineLog.fail('STT reinitialize', error);
+      return false;
     }
   }
 
@@ -118,28 +152,40 @@ class SpeechRecognitionService {
     Duration listenFor = const Duration(seconds: 30),
     Duration pauseFor = const Duration(milliseconds: 1200),
     bool partialResults = true,
+    bool allowCloudFallback = true,
   }) async {
     if (_backend == SttBackend.cloud) {
+      if (!allowCloudFallback) {
+        throw const VoiceFailure(
+          'Cloud STT disabled for this listening session.',
+        );
+      }
       await _listenCloud(onFinal: onFinal, onPartial: onPartial);
       return;
     }
 
     if (!_speechToText.isAvailable) {
-      if (_cloudFallbackEnabled) {
+      VoicePipelineLog.fail(
+        'STT listen',
+        'offline unavailable (isAvailable=false)',
+      );
+      if (allowCloudFallback && _cloudFallbackEnabled) {
         await _listenCloud(onFinal: onFinal, onPartial: onPartial);
         return;
       }
       throw const VoiceFailure('Speech recognition unavailable.');
     }
 
-    // Never leave a prior session stuck — force-clear before opening mic.
     if (_speechToText.isListening || _listening) {
       await stop();
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
 
     _listening = true;
-    var gotFinal = false;
+    VoicePipelineLog.stage(
+      'Speech Recognition started',
+      'mode=$mode listenFor=${listenFor.inSeconds}s locale=$_localeId',
+    );
 
     await _speechToText.listen(
       onResult: (result) {
@@ -148,16 +194,21 @@ class SpeechRecognitionService {
           return;
         }
         if (result.finalResult) {
-          // Always clear listening flag — even for rejected noise —
-          // otherwise wake-word sessions can never reopen the mic.
           _listening = false;
           if (_noiseFilter.isLikelyNoise(
             words,
             confidence: result.confidence,
           )) {
+            VoicePipelineLog.stage(
+              'Speech Recognition noise rejected',
+              words,
+            );
             return;
           }
-          gotFinal = true;
+          VoicePipelineLog.stage(
+            'Speech Recognition result',
+            '"$words" conf=${result.confidence.toStringAsFixed(2)}',
+          );
           onFinal(
             words,
             backend: SttBackend.offline,
@@ -176,14 +227,6 @@ class SpeechRecognitionService {
         localeId: _localeId,
       ),
     );
-
-    // Auto cloud recovery if offline produced nothing useful.
-    if (_backend == SttBackend.auto &&
-        _cloudFallbackEnabled &&
-        !gotFinal &&
-        !_listening) {
-      // Status-driven cycles handle wake listening; command path uses stop().
-    }
   }
 
   Future<String?> recognizeOnceWithFallback({
@@ -197,8 +240,10 @@ class SpeechRecognitionService {
         listenFor: listenFor,
         pauseFor: const Duration(seconds: 2),
         mode: ListenMode.dictation,
+        allowCloudFallback: _cloudFallbackEnabled,
         onPartial: (partial) {
           lastPartial = partial;
+          VoicePipelineLog.stage('Command partial', partial);
         },
         onFinal: (transcript, {required backend, confidence = 1.0}) {
           if (!completer.isCompleted) {
@@ -206,7 +251,8 @@ class SpeechRecognitionService {
           }
         },
       );
-    } catch (_) {
+    } catch (error) {
+      VoicePipelineLog.fail('Command STT start', error);
       if (!completer.isCompleted) {
         completer.complete(null);
       }
@@ -217,11 +263,17 @@ class SpeechRecognitionService {
       onTimeout: () async {
         await stop();
         if (lastPartial.trim().isNotEmpty) {
+          VoicePipelineLog.stage(
+            'Speech Recognition result',
+            'timeout using partial "$lastPartial"',
+          );
           return _noiseFilter.cleanTranscript(lastPartial);
         }
         if (_cloudFallbackEnabled) {
+          VoicePipelineLog.stage('Speech Recognition', 'timeout → cloud fallback');
           return _transcribeCloudFromMic(duration: listenFor);
         }
+        VoicePipelineLog.fail('Speech Recognition', 'timeout with empty result');
         return null;
       },
     );
@@ -354,7 +406,6 @@ class SpeechRecognitionService {
   }
 
   Future<String> _baseUrl(OpenAiConfigService config) async {
-    // Prefer env-backed OpenAI base via existing provider defaults.
     return 'https://api.openai.com/v1';
   }
 }

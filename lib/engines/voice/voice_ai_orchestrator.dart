@@ -9,6 +9,7 @@ import '../security/voice_verification.dart';
 import 'speech_recognition_service.dart';
 import 'speech_synthesis_service.dart';
 import 'voice_engine.dart';
+import 'voice_pipeline_log.dart';
 import 'voice_session_manager.dart';
 import 'wake_word_engine.dart';
 
@@ -38,6 +39,7 @@ class VoiceAiOrchestrator {
   SpeechSynthesisService get tts => _voiceEngine.speechSynthesis;
   WakeWordEngine get wakeWord => _voiceEngine.wakeWordEngine;
   VoiceSessionManager get sessions => _voiceEngine.sessionManager;
+  WakeWordEngine get wakeWordEngine => _voiceEngine.wakeWordEngine;
 
   Future<void> onWakeWord({
     required String wakeWord,
@@ -47,10 +49,12 @@ class VoiceAiOrchestrator {
     void Function(String route)? navigate,
   }) async {
     if (_pipelineBusy) {
+      VoicePipelineLog.fail('Pipeline', 'busy — dropped wake "$wakeWord"');
       return;
     }
     _pipelineBusy = true;
     try {
+      VoicePipelineLog.stage('Wake Word detected', wakeWord);
       _emit(
         'wake',
         'Wake word detected: $wakeWord',
@@ -66,6 +70,7 @@ class VoiceAiOrchestrator {
         _emit('emergency', wakeWord, isEmergency: true, transcript: wakeWord);
         navigate?.call('/emergency');
         if (settings.ttsEnabled) {
+          VoicePipelineLog.stage('TTS started', 'Emergency mode activated.');
           await tts.speak('Emergency mode activated.');
         }
         return;
@@ -74,35 +79,41 @@ class VoiceAiOrchestrator {
       sessions.setState(VoiceSessionState.listening);
       _emit('listening', 'Listening for command');
 
-      // Same-utterance command: "Noctros, open camera"
       final commandFromWake =
           wakeWordEngine.stripWakeWord(wakeTranscript, wakeWord).trim();
 
       String? transcript;
       if (commandFromWake.length >= 2) {
         transcript = commandFromWake;
+        VoicePipelineLog.stage(
+          'Speech Recognition result',
+          'same-utterance "$transcript"',
+        );
         _emit(
           'recognized',
           'Heard command with wake word',
           transcript: transcript,
         );
       } else {
-        // Mic handoff after wake session stops, then capture command.
-        await Future<void>.delayed(const Duration(milliseconds: 350));
+        VoicePipelineLog.stage('Speech Recognition started', 'command capture');
+        await Future<void>.delayed(const Duration(milliseconds: 400));
         transcript = await stt.recognizeOnceWithFallback(
           listenFor: const Duration(seconds: 10),
         );
       }
 
       if (transcript == null || transcript.isEmpty) {
+        VoicePipelineLog.fail('Speech Recognition result', 'empty');
         _emit('error', 'I did not catch that.');
         if (settings.ttsEnabled) {
           sessions.setState(VoiceSessionState.speaking);
+          VoicePipelineLog.stage('TTS started', 'I did not catch that.');
           await tts.speak('I did not catch that.');
         }
         return;
       }
 
+      VoicePipelineLog.stage('Speech Recognition result', '"$transcript"');
       sessions.setState(VoiceSessionState.processing);
       _emit('thinking', 'Processing', transcript: transcript);
       await processTranscript(
@@ -111,13 +122,15 @@ class VoiceAiOrchestrator {
         confirmAction: confirmAction,
         navigate: navigate,
       );
+    } catch (error) {
+      VoicePipelineLog.fail('Pipeline', error);
+      rethrow;
     } finally {
       _pipelineBusy = false;
       sessions.setState(VoiceSessionState.idle);
+      VoicePipelineLog.stage('Conversation finished');
     }
   }
-
-  WakeWordEngine get wakeWordEngine => _voiceEngine.wakeWordEngine;
 
   Future<VoicePipelineEvent?> processTranscript({
     required String transcript,
@@ -145,6 +158,7 @@ class VoiceAiOrchestrator {
       );
       navigate?.call('/emergency');
       if (settings.ttsEnabled) {
+        VoicePipelineLog.stage('TTS started', 'Emergency mode');
         await tts.speak('Emergency mode. Help is on the way.');
       }
       return VoicePipelineEvent(
@@ -164,6 +178,7 @@ class VoiceAiOrchestrator {
           finalTranscript: transcript,
         ),
       );
+      VoicePipelineLog.fail('Voice ID', verification.message);
       _emit('denied', verification.message, transcript: transcript);
       if (settings.ttsEnabled) {
         await tts.speak(
@@ -194,6 +209,7 @@ class VoiceAiOrchestrator {
       final allowed = await _confirmByVoice(prompt, settings) ??
           await confirmAction(prompt);
       if (!allowed) {
+        VoicePipelineLog.stage('Intent detected', 'cancelled by user');
         if (settings.ttsEnabled) {
           await tts.speak('Okay, cancelled.');
         }
@@ -212,8 +228,10 @@ class VoiceAiOrchestrator {
 
     if (result.isFailure) {
       final message = result.failureOrNull?.message ?? 'Something went wrong.';
+      VoicePipelineLog.fail('AI / Intent', message);
       _emit('error', message, transcript: transcript);
       if (settings.ttsEnabled) {
+        VoicePipelineLog.stage('TTS started', message);
         await tts.speak(message);
       }
       return VoicePipelineEvent(stage: 'error', message: message);
@@ -221,9 +239,24 @@ class VoiceAiOrchestrator {
 
     final handled = result.valueOrThrow;
     final reply = handled.assistantMessage?.content ?? 'Done.';
+
+    if (handled.kind == HandleCommandKind.deviceAction) {
+      VoicePipelineLog.stage(
+        'Intent detected',
+        handled.deviceResult?.message ?? 'device action',
+      );
+      VoicePipelineLog.stage(
+        'Device Action executed',
+        'success=${handled.deviceResult?.success} msg=${handled.deviceResult?.message}',
+      );
+    } else {
+      VoicePipelineLog.stage('AI Response received', reply);
+    }
+
     _emit('response', reply, transcript: transcript);
     sessions.setState(VoiceSessionState.speaking);
     if (settings.ttsEnabled) {
+      VoicePipelineLog.stage('TTS started', reply);
       await tts.speak(reply);
     }
     sessions.setState(VoiceSessionState.idle);
@@ -234,7 +267,6 @@ class VoiceAiOrchestrator {
     );
   }
 
-  /// Ask for spoken yes/no. Returns null if nothing heard (caller may fall back).
   Future<bool?> _confirmByVoice(String prompt, UserSettings settings) async {
     if (!settings.ttsEnabled) {
       return null;
@@ -247,6 +279,7 @@ class VoiceAiOrchestrator {
       listenFor: const Duration(seconds: 5),
     );
     if (answer == null || answer.trim().isEmpty) {
+      VoicePipelineLog.fail('Voice confirm', 'no answer');
       return null;
     }
     final n = answer.toLowerCase();
@@ -255,7 +288,7 @@ class VoiceAiOrchestrator {
     ).hasMatch(n)) {
       return true;
     }
-    if (RegExp(r'\b(no|nope|cancel|stop|hayır|iptal|vazgeç)\b').hasMatch(n)) {
+    if (RegExp(r'\b(no|nope|cancel|stop|hayir|iptal|vazgec)\b').hasMatch(n)) {
       return false;
     }
     return null;

@@ -37,11 +37,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await ref.read(settingsControllerProvider.notifier).load();
       await ref.read(permissionsControllerProvider.notifier).refresh();
       await ref.read(openAiSettingsProvider.notifier).load();
+      // Do not fake "Listening" here — lifecycle sets it only when wake is live.
+      final mic = ref.read(permissionsControllerProvider).microphoneGranted;
       final settings = ref.read(settingsControllerProvider).settings;
-      if (settings?.wakeWordEnabled != false) {
+      final voiceActive = ref.read(voiceActivationProvider).isActive;
+      if (!mic) {
+        ref.read(assistantUiProvider.notifier).setIdle('Allow microphone');
+      } else if (settings?.wakeWordEnabled == false) {
+        ref.read(assistantUiProvider.notifier).setIdle('Wake word off');
+      } else if (voiceActive) {
         ref.read(assistantUiProvider.notifier).setListening('Listening');
-      } else {
-        ref.read(assistantUiProvider.notifier).setIdle('Ready');
       }
     });
   }

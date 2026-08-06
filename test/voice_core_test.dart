@@ -41,6 +41,20 @@ void main() {
       );
       expect(engine.detect('help me please'), 'help');
     });
+
+    test('matches fuzzy noctros mishearings', () async {
+      final engine = WakeWordEngine(
+        speechRecognition: SpeechRecognitionService(),
+      );
+      await engine.configure(wakeWords: ['Noctros', 'Hey Noctros']);
+      expect(engine.detect('Noctros open camera'), 'Noctros');
+      expect(engine.detect('hey noktros'), isNotNull);
+      expect(engine.detect('knock tross turn on flashlight'), isNotNull);
+      expect(
+        engine.stripWakeWord('Noctros, open camera', 'Noctros'),
+        'open camera',
+      );
+    });
   });
 
   group('UserSettings wake words', () {
