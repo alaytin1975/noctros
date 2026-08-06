@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../presentation/features/chat/chat_history_screen.dart';
 import '../../presentation/features/chat/chat_screen.dart';
 import '../../presentation/features/emergency/emergency_screen.dart';
 import '../../presentation/features/home/home_screen.dart';
@@ -14,8 +15,8 @@ final _shellNavigatorHomeKey =
     GlobalKey<NavigatorState>(debugLabel: 'shellHome');
 final _shellNavigatorChatKey =
     GlobalKey<NavigatorState>(debugLabel: 'shellChat');
-final _shellNavigatorEmergencyKey =
-    GlobalKey<NavigatorState>(debugLabel: 'shellEmergency');
+final _shellNavigatorHistoryKey =
+    GlobalKey<NavigatorState>(debugLabel: 'shellHistory');
 final _shellNavigatorSettingsKey =
     GlobalKey<NavigatorState>(debugLabel: 'shellSettings');
 
@@ -50,12 +51,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
-            navigatorKey: _shellNavigatorEmergencyKey,
+            navigatorKey: _shellNavigatorHistoryKey,
             routes: [
               GoRoute(
-                path: EmergencyScreen.routePath,
-                name: EmergencyScreen.routeName,
-                builder: (context, state) => const EmergencyScreen(),
+                path: ChatHistoryScreen.routePath,
+                name: ChatHistoryScreen.routeName,
+                builder: (context, state) => const ChatHistoryScreen(),
               ),
             ],
           ),
@@ -77,6 +78,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: EmergencyScreen.routePath,
+        name: EmergencyScreen.routeName,
+        builder: (context, state) => const EmergencyScreen(),
       ),
     ],
   );

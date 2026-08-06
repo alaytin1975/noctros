@@ -125,6 +125,6 @@ final voiceActivationProvider =
 
 final themeModeProvider = Provider<ThemeMode>((ref) {
   final settingsState = ref.watch(settingsControllerProvider);
-  final darkModeEnabled = settingsState.settings?.darkModeEnabled ?? false;
+  final darkModeEnabled = settingsState.settings?.darkModeEnabled ?? true;
   return darkModeEnabled ? ThemeMode.dark : ThemeMode.light;
 });

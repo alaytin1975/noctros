@@ -12,6 +12,7 @@ import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
 import '../../providers/permission_providers.dart';
+import '../../widgets/glass_panel.dart';
 import '../../widgets/permission_prompt_sheet.dart';
 import 'voice_settings_screen.dart';
 
@@ -41,12 +42,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
   }
 
-  Future<void> _syncVoiceEngine(OpenAiSettingsState openAi) async {
-    final voice = ServiceLocator.get<VoiceEngine>();
-    await voice.configureVoice(
-      speechRate: openAi.speechRate,
-      localeId: openAi.sttLocaleId,
-    );
+  Future<void> _update(UserSettings settings) {
+    return ref.read(settingsControllerProvider.notifier).save(settings);
   }
 
   @override
@@ -54,66 +51,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settingsState = ref.watch(settingsControllerProvider);
     final settings = settingsState.settings;
     final openAi = ref.watch(openAiSettingsProvider);
+    final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: settingsState.isLoading || settings == null || openAi.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(20),
+    if (settingsState.isLoading || settings == null || openAi.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          Text('Settings', style: theme.textTheme.headlineMedium),
+          const SizedBox(height: 6),
+          Text(
+            'Voice, privacy, and assistant preferences',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 20),
+          GlassPanel(
+            child: Column(
               children: [
-                const _SectionHeader(title: 'Appearance'),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Dark mode'),
-                  subtitle: const Text('Use Noctros dark theme'),
-                  value: settings.darkModeEnabled,
-                  onChanged: (value) => _update(
-                    settings.copyWith(darkModeEnabled: value),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'OpenAI'),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('API key'),
-                  subtitle: Text(
-                    openAi.isConfigured
-                        ? 'Configured (${_maskKey(openAi.apiKey)})'
-                        : 'Not set — use Settings or .env',
-                  ),
-                  trailing: const Icon(Icons.key_outlined),
-                  onTap: _editApiKey,
-                ),
-                DropdownMenu<String>(
-                  initialSelection: openAi.model,
-                  label: const Text('AI model'),
-                  dropdownMenuEntries: OpenAiConfigService.supportedModels
-                      .map(
-                        (model) => DropdownMenuEntry(
-                          value: model,
-                          label: model,
-                        ),
-                      )
-                      .toList(),
-                  onSelected: (value) async {
-                    if (value == null) {
-                      return;
-                    }
-                    await ref
-                        .read(openAiSettingsProvider.notifier)
-                        .saveModel(value);
-                  },
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Voice'),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Voice Settings'),
-                  subtitle: Text(
-                    'Wake word, Voice ID, language, TTS — assistant: ${settings.assistantName}',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
+                  leading: const Icon(Icons.record_voice_over_rounded),
+                  title: const Text('Voice & wake word'),
+                  subtitle: Text('Assistant: ${settings.assistantName}'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -124,71 +87,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Speak replies (TTS)'),
-                  value: openAi.ttsEnabled,
-                  onChanged: (value) async {
-                    await ref
-                        .read(openAiSettingsProvider.notifier)
-                        .setTtsEnabled(value);
-                    await _update(settings.copyWith(ttsEnabled: value));
-                  },
-                ),
-                Text('Speech speed', style: Theme.of(context).textTheme.bodyMedium),
-                Slider(
-                  value: openAi.speechRate.clamp(0.2, 1.0),
-                  min: 0.2,
-                  max: 1.0,
-                  divisions: 16,
-                  label: openAi.speechRate.toStringAsFixed(2),
-                  onChanged: (value) async {
-                    await ref
-                        .read(openAiSettingsProvider.notifier)
-                        .setSpeechRate(value);
-                    await _syncVoiceEngine(
-                      ref.read(openAiSettingsProvider),
-                    );
-                    await _update(settings.copyWith(speechRate: value));
-                  },
-                ),
-                DropdownMenu<String>(
-                  initialSelection: openAi.sttLocaleId,
-                  label: const Text('STT language'),
-                  dropdownMenuEntries: OpenAiConfigService.supportedSttLocales
-                      .map(
-                        (locale) => DropdownMenuEntry(
-                          value: locale,
-                          label: locale,
-                        ),
-                      )
-                      .toList(),
-                  onSelected: (value) async {
-                    if (value == null) {
-                      return;
-                    }
-                    await ref
-                        .read(openAiSettingsProvider.notifier)
-                        .setSttLocale(value);
-                    await _syncVoiceEngine(
-                      ref.read(openAiSettingsProvider),
-                    );
-                    await _update(settings.copyWith(sttLocaleId: value));
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Continuous voice conversation'),
-                  subtitle: const Text('Keep listening after each reply'),
-                  value: settings.continuousVoiceEnabled,
+                  secondary: const Icon(Icons.hearing_rounded),
+                  title: const Text('Always listening'),
+                  subtitle: const Text('Keep wake-word detection active'),
+                  value: settings.wakeWordEnabled,
                   onChanged: (value) => _update(
-                    settings.copyWith(continuousVoiceEnabled: value),
+                    settings.copyWith(wakeWordEnabled: value),
                   ),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Prepare always-listening service'),
-                  subtitle: const Text(
-                    'Battery-aware wake architecture for future background mode',
-                  ),
+                  secondary: const Icon(Icons.battery_saver_rounded),
+                  title: const Text('Battery-optimized listening'),
                   value: settings.alwaysListeningPrepared,
                   onChanged: (value) async {
                     await _update(
@@ -200,40 +110,132 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     }
                   },
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Appearance', style: theme.textTheme.titleMedium),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Dark theme'),
+                  value: settings.darkModeEnabled,
+                  onChanged: (value) =>
+                      _update(settings.copyWith(darkModeEnabled: value)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('AI provider', style: theme.textTheme.titleMedium),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Wake words'),
-                  subtitle: Text(settings.wakeWords.join(', ')),
+                  title: const Text('API key'),
+                  subtitle: Text(
+                    openAi.isConfigured ? 'Configured securely' : 'Not set',
+                  ),
+                  trailing: const Icon(Icons.key_rounded),
+                  onTap: _editApiKey,
                 ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Permissions'),
-                ...corePermissions.map(
-                  (permission) => PermissionTile(permission: permission),
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'AI & Privacy'),
-                DropdownMenu<AiExecutionMode>(
-                  initialSelection: settings.aiExecutionMode,
-                  label: const Text('AI execution mode'),
-                  dropdownMenuEntries: AiExecutionMode.values
+                DropdownMenu<String>(
+                  initialSelection: openAi.model,
+                  label: const Text('Model'),
+                  dropdownMenuEntries: OpenAiConfigService.supportedModels
                       .map(
-                        (mode) => DropdownMenuEntry(
-                          value: mode,
-                          label: mode.name,
-                        ),
+                        (model) => DropdownMenuEntry(value: model, label: model),
                       )
                       .toList(),
-                  onSelected: (value) {
+                  onSelected: (value) async {
                     if (value == null) {
                       return;
                     }
-                    _update(settings.copyWith(aiExecutionMode: value));
+                    await ref
+                        .read(openAiSettingsProvider.notifier)
+                        .saveModel(value);
                   },
                 ),
                 const SizedBox(height: 12),
+                DropdownMenu<AiExecutionMode>(
+                  initialSelection: settings.aiExecutionMode,
+                  label: const Text('Execution mode'),
+                  dropdownMenuEntries: AiExecutionMode.values
+                      .map(
+                        (mode) =>
+                            DropdownMenuEntry(value: mode, label: mode.name),
+                      )
+                      .toList(),
+                  onSelected: (value) {
+                    if (value != null) {
+                      _update(settings.copyWith(aiExecutionMode: value));
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Speech', style: theme.textTheme.titleMedium),
+                Text('Speed', style: theme.textTheme.bodyMedium),
+                Slider(
+                  value: settings.speechRate.clamp(0.2, 1.0),
+                  min: 0.2,
+                  max: 1.0,
+                  onChanged: (value) =>
+                      _update(settings.copyWith(speechRate: value)),
+                ),
+                Text('Volume', style: theme.textTheme.bodyMedium),
+                Slider(
+                  value: settings.speechVolume.clamp(0.0, 1.0),
+                  min: 0.0,
+                  max: 1.0,
+                  onChanged: (value) =>
+                      _update(settings.copyWith(speechVolume: value)),
+                ),
+                DropdownMenu<String>(
+                  initialSelection: settings.sttLocaleId,
+                  label: const Text('Language'),
+                  dropdownMenuEntries: OpenAiConfigService.supportedSttLocales
+                      .map(
+                        (locale) =>
+                            DropdownMenuEntry(value: locale, label: locale),
+                      )
+                      .toList(),
+                  onSelected: (value) {
+                    if (value != null) {
+                      _update(settings.copyWith(sttLocaleId: value));
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Notifications & privacy', style: theme.textTheme.titleMedium),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Local memory'),
+                  value: settings.memoryEnabled,
+                  onChanged: (value) =>
+                      _update(settings.copyWith(memoryEnabled: value)),
+                ),
                 DropdownMenu<PrivacyCloudPolicy>(
                   initialSelection: settings.cloudPolicy,
-                  label: const Text('Cloud data policy'),
+                  label: const Text('Cloud policy'),
                   dropdownMenuEntries: PrivacyCloudPolicy.values
                       .map(
                         (policy) => DropdownMenuEntry(
@@ -243,135 +245,70 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       )
                       .toList(),
                   onSelected: (value) {
-                    if (value == null) {
-                      return;
+                    if (value != null) {
+                      _update(settings.copyWith(cloudPolicy: value));
                     }
-                    _update(settings.copyWith(cloudPolicy: value));
                   },
                 ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Memory'),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Enable local AI memory'),
-                  subtitle: const Text(
-                    'Remember preferences only with your permission',
-                  ),
-                  value: settings.memoryEnabled,
-                  onChanged: (value) => _update(
-                    settings.copyWith(memoryEnabled: value),
-                  ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Remember preferred contacts'),
-                  subtitle: const Text(
-                    'Only after you approve — never stores phone numbers in logs',
-                  ),
-                  value: settings.rememberPreferredContacts,
-                  onChanged: (value) => _update(
-                    settings.copyWith(rememberPreferredContacts: value),
-                  ),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Delete all memory'),
-                  trailing: const Icon(Icons.delete_outline),
-                  onTap: _confirmDeleteMemory,
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Device assistant'),
-                DropdownMenu<String>(
-                  initialSelection: settings.defaultNavigationApp,
-                  label: const Text('Default navigation app'),
-                  dropdownMenuEntries: const [
-                    DropdownMenuEntry(
-                      value: 'google_maps',
-                      label: 'Google Maps',
-                    ),
-                    DropdownMenuEntry(
-                      value: 'browser',
-                      label: 'Browser maps link',
-                    ),
-                  ],
-                  onSelected: (value) {
-                    if (value == null) {
-                      return;
-                    }
-                    _update(settings.copyWith(defaultNavigationApp: value));
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownMenu<String>(
-                  initialSelection: settings.preferredBrowser,
-                  label: const Text('Preferred browser'),
-                  dropdownMenuEntries: const [
-                    DropdownMenuEntry(value: 'default', label: 'System default'),
-                    DropdownMenuEntry(value: 'chrome', label: 'Chrome'),
-                  ],
-                  onSelected: (value) {
-                    if (value == null) {
-                      return;
-                    }
-                    _update(settings.copyWith(preferredBrowser: value));
-                  },
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Confirm sensitive actions'),
-                  subtitle: const Text(
-                    'Ask before calls, messages, and navigation',
-                  ),
-                  value: settings.confirmDeviceActions,
-                  onChanged: (value) => _update(
-                    settings.copyWith(confirmDeviceActions: value),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Privacy & data'),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Export local data'),
-                  subtitle: const Text(
-                    'Conversations summary, memory keys, action logs',
-                  ),
-                  trailing: const Icon(Icons.upload_outlined),
-                  onTap: _exportLocalData,
+                  trailing: const Icon(Icons.upload_rounded),
+                  onTap: () async {
+                    final result =
+                        await _manageLocalDataUseCase.exportLocalData();
+                    if (result.isSuccess) {
+                      await Share.share(result.valueOrThrow);
+                    }
+                  },
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Delete local data'),
-                  subtitle: const Text(
-                    'Clears chats, memory, and action history',
-                  ),
-                  trailing: const Icon(Icons.delete_forever_outlined),
-                  onTap: _confirmDeleteLocalData,
-                ),
-                const SizedBox(height: 8),
-                const _SectionHeader(title: 'Emergency'),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Automatic emergency calling'),
-                  subtitle: const Text('Disabled by default'),
-                  value: settings.emergencyAutoDialEnabled,
-                  onChanged: (value) => _update(
-                    settings.copyWith(emergencyAutoDialEnabled: value),
-                  ),
+                  trailing: const Icon(Icons.delete_forever_rounded),
+                  onTap: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete local data?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      await _manageLocalDataUseCase.deleteLocalData();
+                      await _manageMemoryUseCase.forgetAll();
+                      await ref.read(settingsControllerProvider.notifier).load();
+                    }
+                  },
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 14),
+          GlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Permissions', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                ...corePermissions.map(
+                  (permission) => PermissionTile(permission: permission),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
-  }
-
-  Future<void> _update(UserSettings settings) {
-    return ref.read(settingsControllerProvider.notifier).save(settings);
-  }
-
-  String _maskKey(String key) {
-    if (key.length <= 8) {
-      return '••••';
-    }
-    return '${key.substring(0, 3)}••••${key.substring(key.length - 4)}';
   }
 
   Future<void> _editApiKey() async {
@@ -385,19 +322,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         content: TextField(
           controller: controller,
           obscureText: true,
-          decoration: const InputDecoration(
-            hintText: 'sk-...',
-            helperText: 'Stored securely on device. You can also use .env.',
-          ),
+          decoration: const InputDecoration(hintText: 'sk-...'),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, null),
+            onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, ''),
-            child: const Text('Clear'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
@@ -410,135 +340,5 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (saved != null) {
       await ref.read(openAiSettingsProvider.notifier).saveApiKey(saved);
     }
-  }
-
-  Future<void> _confirmDeleteMemory() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete all memory?'),
-        content: const Text(
-          'This removes all stored preferences, routines, and habits from Noctros.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    final result = await _manageMemoryUseCase.forgetAll();
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.isSuccess
-              ? 'All memory deleted.'
-              : result.failureOrNull?.message ?? 'Failed to delete memory.',
-        ),
-      ),
-    );
-  }
-
-  Future<void> _exportLocalData() async {
-    final result = await _manageLocalDataUseCase.exportLocalData();
-    if (!mounted) {
-      return;
-    }
-    if (result.isFailure) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result.failureOrNull?.message ?? 'Export failed.',
-          ),
-        ),
-      );
-      return;
-    }
-    await Share.share(
-      result.valueOrThrow,
-      subject: 'Noctros local data export',
-    );
-  }
-
-  Future<void> _confirmDeleteLocalData() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete local data?'),
-        content: const Text(
-          'This clears chats, memory entries, and device action history. '
-          'API keys in secure storage are not deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) {
-      return;
-    }
-
-    final result = await _manageLocalDataUseCase.deleteLocalData();
-    if (!mounted) {
-      return;
-    }
-    ref.invalidate(recentActionsProvider);
-    ref.invalidate(favoriteMemoryProvider);
-    await ref.read(conversationListProvider.notifier).load();
-    await ref.read(settingsControllerProvider.notifier).load();
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          result.isSuccess
-              ? 'Local data deleted.'
-              : result.failureOrNull?.message ?? 'Delete failed.',
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 8),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-      ),
-    );
   }
 }

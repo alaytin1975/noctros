@@ -1,7 +1,7 @@
 /// Canonical product and wake-word identifiers for Noctros.
 abstract final class NoctrosConstants {
   static const appName = 'Noctros';
-  static const defaultWakeWords = ['Hey Noctros', 'Noctros'];
+  static const defaultWakeWords = ['Noctros', 'Hey Noctros'];
   static const emergencyPhrases = [
     'help',
     'emergency',

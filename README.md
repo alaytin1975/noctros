@@ -1,13 +1,15 @@
 # Noctros
 
-Noctros is a voice-first AI device assistant for smartphones — wake it by name, control the phone with confirmed actions, and keep emergencies available to anyone.
+Noctros is a premium voice-first AI device assistant for smartphones.
 
-## Requirements
+## v0.7 highlights
 
-- Flutter SDK 3.24+
-- Dart 3.5+
-- Android Studio / Xcode for device builds
-- OpenAI API key (cloud AI chat + optional Whisper STT fallback)
+- Commercial dark UI with glassmorphism and Material 3
+- Animated AI Orb (idle / listening / thinking / speaking)
+- Silent always-listening wake word with stable mic sessions
+- Persistent “Noctros is ready” notification
+- ChatGPT-style conversation experience
+- Modern Home / Chat / History / Settings navigation
 
 ## Setup
 
@@ -22,56 +24,36 @@ flutter run
 ## Architecture
 
 ```
+Wake word → Speech Recognition → Voice ID → Intent Parser
+         → AI Orchestrator → Device Action → Voice Response
+```
+
+```
 lib/
 ├── app/                 # Bootstrap, routing, DI
 ├── core/                # Config, prompts, errors
 ├── domain/              # Entities, repositories, use cases
-├── data/                # SQLite, secure storage, repos
-├── presentation/        # UI + Riverpod
-├── engines/
-│   ├── ai/              # Hybrid AI router
-│   ├── automation/      # Intent parser + device actions
-│   ├── emergency/       # SOS call/SMS/GPS/flashlight
-│   ├── security/        # Voice ID (print/enroll/verify)
-│   └── voice/           # Modular Voice Core
+├── data/                # SQLite, secure storage
+├── presentation/        # Premium UI + Riverpod
+└── engines/             # AI, Voice, Security, Automation, Emergency
 ```
 
-### Voice pipeline
+## Voice behavior
 
+1. Microphone stays in a long silent wake session  
+2. Detect “Noctros” (or your custom name)  
+3. Full speech recognition activates  
+4. Assistant thinks and speaks  
+5. Automatically returns to silent idle wake mode  
+
+No intentional beep sounds. Restarts use backoff to avoid mic loops.
+
+## Build
+
+```bash
+flutter analyze
+flutter test
+flutter build apk --release
 ```
-Wake word → Speech Recognition → Voice ID → Intent Parser
-        → AI Orchestrator → Device Action → Voice Response
-```
 
-### Security model
-
-| Speaker | Access |
-|---|---|
-| Owner (Voice ID match or Voice ID off) | Full assistant + device actions |
-| Unknown / guest (Voice ID on) | Emergency commands only |
-| Any speaker | Help / Emergency / Call 112 / Save me |
-
-Voice prints are stored encrypted in secure storage and never uploaded.
-
-### Permission flow
-
-1. App bootstrap refreshes permission snapshots  
-2. Microphone prompt for wake listening  
-3. Voice Settings / Settings overview for Phone, SMS, Location, Notifications, Battery optimization, Overlay  
-4. Denied permissions fail gracefully; sensitive actions still require user confirmation  
-
-## v0.6 Voice Core
-
-- Modular Voice Engine: WakeWord, STT, TTS, Session, NoiseFilter, PermissionManager
-- Configurable assistant name / wake word (Noctros, Nova, Friday, Jarvis, …)
-- On-device Voice ID enrollment + verification
-- Emergency mode with dialer, contacts SMS, GPS, SOS flashlight
-- Offline-first STT with Whisper cloud fallback
-- TTS gender/speed/pitch/volume + interrupt + queue
-- Voice AI orchestrator pipeline
-- Flashlight + music device actions
-- Dedicated Voice Settings page
-
-## v0.5 preserved
-
-Device actions, confirmations, home dashboard, memory, chat streaming, and privacy export/delete remain intact.
+APK output: `build/app/outputs/flutter-apk/app-release.apk`

@@ -28,6 +28,7 @@ import '../../engines/voice/speech_recognition_service.dart';
 import '../../engines/voice/speech_synthesis_service.dart';
 import '../../engines/voice/voice_ai_orchestrator.dart';
 import '../../engines/voice/voice_engine.dart';
+import '../../engines/voice/voice_notification_service.dart';
 import '../../engines/voice/voice_permission_manager.dart';
 import '../../engines/voice/wake_word_engine.dart';
 
@@ -122,6 +123,7 @@ abstract final class ServiceLocator {
         wakeWordEngine: get<WakeWordEngine>(),
       ),
     );
+    _registerSingleton<VoiceNotificationService>(VoiceNotificationService.new);
     _registerSingleton<VoicePrintManager>(
       () => VoicePrintManager(secureStorage: get<SecureStorageService>()),
     );

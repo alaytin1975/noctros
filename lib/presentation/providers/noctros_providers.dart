@@ -164,6 +164,22 @@ class ConversationListController extends StateNotifier<ConversationListState> {
     await load();
   }
 
+  Future<void> rename(Conversation conversation, String title) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    await _conversationRepository.updateConversation(
+      conversation.copyWith(title: trimmed),
+    );
+    await load();
+  }
+
+  Future<void> delete(String conversationId) async {
+    await _conversationRepository.deleteConversation(conversationId);
+    await load();
+  }
+
   Future<ResultExport> export(String conversationId) async {
     final result =
         await _conversationRepository.exportConversation(conversationId);

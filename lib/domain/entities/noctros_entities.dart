@@ -154,7 +154,7 @@ class UserSettings {
       memoryEnabled: false,
       emergencyAutoDialEnabled: false,
       emergencyContacts: [],
-      darkModeEnabled: false,
+      darkModeEnabled: true,
     );
   }
 

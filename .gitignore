@@ -25,6 +25,8 @@ Thumbs.db
 .env.*.local
 *.keystore
 *.jks
+key.properties
+android/key.properties
 google-services.json
 GoogleService-Info.plist
 

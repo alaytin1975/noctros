@@ -67,12 +67,9 @@ class VoiceAiOrchestrator {
       }
 
       navigate?.call('/chat');
-      if (settings.ttsEnabled) {
-        await tts.speak('Yes?');
-      }
-
-      _emit('listening', 'Listening for command');
       sessions.setState(VoiceSessionState.listening);
+      // Silent acknowledgement — no TTS beep/chime on wake.
+      _emit('listening', 'Listening for command');
 
       final transcript = await stt.recognizeOnceWithFallback(
         listenFor: const Duration(seconds: 10),
@@ -80,11 +77,13 @@ class VoiceAiOrchestrator {
       if (transcript == null || transcript.isEmpty) {
         _emit('error', 'I did not catch that.');
         if (settings.ttsEnabled) {
+          sessions.setState(VoiceSessionState.speaking);
           await tts.speak('I did not catch that.');
         }
         return;
       }
 
+      sessions.setState(VoiceSessionState.processing);
       await processTranscript(
         transcript: transcript,
         conversationId: conversationId,

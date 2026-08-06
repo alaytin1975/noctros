@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/di/service_locator.dart';
 import '../../../core/constants/noctros_constants.dart';
@@ -12,13 +13,14 @@ import '../../../domain/entities/permission_entities.dart';
 import '../../../domain/usecases/handle_user_command_use_case.dart';
 import '../../../engines/security/voice_verification.dart';
 import '../../../engines/voice/voice_engine.dart';
+import '../../providers/assistant_ui_provider.dart';
 import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
 import '../../providers/permission_providers.dart';
 import '../../widgets/chat_markdown_bubble.dart';
+import '../../widgets/main_shell.dart';
 import '../../widgets/permission_prompt_sheet.dart';
 import '../emergency/emergency_screen.dart';
-import 'chat_history_screen.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -119,6 +121,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _isListening = true;
       _continuous = continuous;
     });
+    ref.read(assistantUiProvider.notifier).setListening();
 
     await _voiceEngine.startListening(
       continuous: continuous,
@@ -128,6 +131,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
         if (!_continuous) {
           setState(() => _isListening = false);
+          ref.read(assistantUiProvider.notifier).setIdle();
         }
         if (transcript.isEmpty) {
           return;
@@ -135,13 +139,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (NoctrosConstants.emergencyPhrases
             .any((phrase) => transcript.toLowerCase().contains(phrase))) {
           if (mounted) {
-            unawaited(
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const EmergencyScreen(),
-                ),
-              ),
-            );
+            unawaited(context.push(EmergencyScreen.routePath));
           }
           return;
         }
@@ -153,6 +151,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           return;
         }
         _controller.text = partial;
+        ref.read(assistantUiProvider.notifier).setPartial(partial);
       },
     );
   }
@@ -225,6 +224,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     ref.read(chatSessionProvider.notifier).setSending(true);
     ref.read(chatSessionProvider.notifier).setStreamingContent('');
+    ref.read(assistantUiProvider.notifier).setThinking();
 
     final result = await _handleCommandUseCase.execute(
       conversationId: conversationId,
@@ -327,13 +327,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _speak(String text) async {
     setState(() => _isSpeaking = true);
+    ref.read(assistantUiProvider.notifier).setSpeaking();
     try {
       await _voiceEngine.speak(text);
     } finally {
       if (mounted) {
         setState(() => _isSpeaking = false);
+        ref.read(assistantUiProvider.notifier).setIdle();
       }
     }
+  }
+
+  Future<void> _regenerate() async {
+    final messages = ref.read(chatSessionProvider).messages;
+    ChatMessage? lastUser;
+    for (var i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role == MessageRole.user) {
+        lastUser = messages[i];
+        break;
+      }
+    }
+    final conversationId = ref.read(chatSessionProvider).conversationId;
+    if (lastUser == null || conversationId == null) {
+      return;
+    }
+    await _processCommand(
+      conversationId: conversationId,
+      userMessage: lastUser.content,
+    );
+  }
+
+  Future<void> _deleteConversation() async {
+    final id = ref.read(chatSessionProvider).conversationId;
+    if (id == null) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: const Text('This removes the current chat from your device.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    await ref.read(conversationListProvider.notifier).delete(id);
+    await ref.read(chatSessionProvider.notifier).createConversation();
   }
 
   void _scrollToBottom() {
@@ -352,7 +402,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(chatSessionProvider);
-    final openAi = ref.watch(openAiSettingsProvider);
     final theme = Theme.of(context);
     final messages = [
       ...session.messages,
@@ -366,71 +415,54 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Noctros Chat'),
-        actions: [
-          if (_isSpeaking || session.isSending)
-            const Padding(
-              padding: EdgeInsets.only(right: 4),
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-          IconButton(
-            tooltip: _continuous ? 'Stop continuous voice' : 'Continuous voice',
-            onPressed: () => _toggleVoiceInput(continuous: !_continuous),
-            icon: Icon(
-              _continuous ? Icons.record_voice_over : Icons.hearing,
-              color: _continuous ? theme.colorScheme.primary : null,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Chat history',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const ChatHistoryScreen(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.history),
-          ),
-          IconButton(
-            tooltip: 'New chat',
-            onPressed: () =>
-                ref.read(chatSessionProvider.notifier).createConversation(),
-            icon: const Icon(Icons.add_comment_outlined),
-          ),
-        ],
-      ),
-      body: Column(
+    return SafeArea(
+      child: Column(
         children: [
-          if (!openAi.isLoading && !openAi.isConfigured)
-            Container(
-              width: double.infinity,
-              color: theme.colorScheme.secondaryContainer,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Text(
-                'OpenAI not configured — offline fallback is active. Add a key in Settings.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSecondaryContainer,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+            child: Row(
+              children: [
+                Text('Chat', style: theme.textTheme.headlineMedium),
+                const Spacer(),
+                if (_isListening)
+                  const _VoiceWaveform()
+                else if (_isSpeaking || session.isSending)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                IconButton(
+                  tooltip: 'History',
+                  onPressed: () => MainShell.goToHistory(context),
+                  icon: const Icon(Icons.history_rounded),
                 ),
-              ),
+                IconButton(
+                  tooltip: 'Delete chat',
+                  onPressed: _deleteConversation,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+                IconButton(
+                  tooltip: 'New chat',
+                  onPressed: () =>
+                      ref.read(chatSessionProvider.notifier).createConversation(),
+                  icon: const Icon(Icons.edit_square),
+                ),
+              ],
             ),
+          ),
           Expanded(
             child: session.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : messages.isEmpty
                     ? Center(
-                        child: Text(
-                          'Ask Noctros or give a device command.\n'
-                          'Try “Open Camera”, “Call Mom”, or “Navigate to home”.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(
+                            'Ask anything or control your phone.\n'
+                            'Try “Open Camera” or “Navigate home”.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyLarge,
                           ),
                         ),
                       )
@@ -441,6 +473,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         itemBuilder: (context, index) {
                           final message = messages[index];
                           final streaming = message.id == 'streaming';
+                          final isLastAssistant =
+                              !streaming &&
+                              message.role == MessageRole.assistant &&
+                              index == messages.length - 1;
                           return ChatMarkdownBubble(
                             message: message,
                             isStreaming: streaming,
@@ -448,61 +484,107 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     !streaming
                                 ? () => _speak(message.content)
                                 : null,
+                            onRegenerate: isLastAssistant ? _regenerate : null,
                           );
                         },
                       ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Row(
-                children: [
-                  IconButton.filledTonal(
-                    onPressed: session.isSending
-                        ? null
-                        : () => _toggleVoiceInput(continuous: false),
-                    icon: Icon(
-                      _isListening ? Icons.mic : Icons.mic_none_outlined,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(
+              children: [
+                IconButton.filledTonal(
+                  onPressed: session.isSending
+                      ? null
+                      : () => _toggleVoiceInput(continuous: false),
+                  icon: Icon(
+                    _isListening ? Icons.mic : Icons.mic_none_rounded,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    minLines: 1,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    decoration: InputDecoration(
+                      hintText: _isListening ? 'Listening…' : 'Message Noctros',
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                      decoration: InputDecoration(
-                        hintText: _isListening
-                            ? (_continuous
-                                ? 'Continuous listening…'
-                                : 'Listening…')
-                            : 'Message Noctros…',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: session.isSending ? null : _sendMessage,
-                    child: session.isSending
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: theme.colorScheme.onPrimary,
-                            ),
-                          )
-                        : const Icon(Icons.send_rounded),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: session.isSending ? null : _sendMessage,
+                  child: session.isSending
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                        )
+                      : const Icon(Icons.arrow_upward_rounded),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _VoiceWaveform extends StatefulWidget {
+  const _VoiceWaveform();
+
+  @override
+  State<_VoiceWaveform> createState() => _VoiceWaveformState();
+}
+
+class _VoiceWaveformState extends State<_VoiceWaveform>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(5, (index) {
+            final height = 6.0 +
+                (10 * (0.4 + (_controller.value * (index.isEven ? 1 : 0.6))));
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              width: 3,
+              height: height,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
