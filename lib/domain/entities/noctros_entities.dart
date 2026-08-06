@@ -100,7 +100,7 @@ class UserSettings {
     this.ttsEnabled = true,
     this.sttLocaleId = 'en_US',
     this.continuousVoiceEnabled = false,
-    this.alwaysListeningPrepared = false,
+    this.alwaysListeningPrepared = true,
     this.defaultNavigationApp = 'google_maps',
     this.preferredBrowser = 'default',
     this.rememberPreferredContacts = false,

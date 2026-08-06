@@ -108,13 +108,12 @@ class VoiceEngine {
     );
   }
 
-  /// Duty-cycled always-listening preparation (battery-aware wake cycles).
+  /// Marks always-listening as prepared for lifecycle (keeps mic on pause).
+  ///
+  /// True background FGS is platform-limited; while the app process is alive
+  /// we keep the wake-word STT session running instead of start/stop stubs.
   Future<void> prepareAlwaysListeningBackgroundService() async {
     _backgroundServicePrepared = true;
-    if (!_wakeWordEngine.isActive) {
-      await startWakeWordListening(onWakeWordDetected: (_) {});
-      await stopWakeWordListening();
-    }
   }
 
   Future<void> startListening({
@@ -183,7 +182,8 @@ class VoiceEngine {
   }
 
   Future<void> startWakeWordListening({
-    required void Function(String wakeWord) onWakeWordDetected,
+    required void Function(String wakeWord, String transcript)
+        onWakeWordDetected,
     Duration listenDuration = const Duration(seconds: 20),
     Duration pauseDuration = const Duration(seconds: 4),
   }) async {
@@ -197,7 +197,7 @@ class VoiceEngine {
             partialTranscript: transcript,
           ),
         );
-        onWakeWordDetected(wakeWord);
+        onWakeWordDetected(wakeWord, transcript);
       },
     );
     _sessionManager.setState(VoiceSessionState.listening);
@@ -205,6 +205,7 @@ class VoiceEngine {
 
   Future<void> stopWakeWordListening() async {
     await _wakeWordEngine.stop();
+    await _speechRecognition.stop();
     if (_sessionManager.session.state != VoiceSessionState.speaking) {
       _sessionManager.update(
         const VoiceSession(state: VoiceSessionState.idle),

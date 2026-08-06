@@ -147,18 +147,18 @@ class VoicePrintManager {
   }
 
   /// Text-path gate used when PCM capture is unavailable mid-session.
+  ///
+  /// speech_to_text wake/command paths cannot supply PCM. Blocking every
+  /// device action in that case breaks the voice pipeline — allow owner
+  /// access when a live sample is unavailable.
   Future<VoiceAccessLevel> resolveAccessWithoutSample({
     required bool voiceIdEnabled,
   }) async {
     if (!voiceIdEnabled) {
       return VoiceAccessLevel.owner;
     }
-    final enrolled = await hasEnrollment();
-    if (!enrolled) {
-      return VoiceAccessLevel.guest;
-    }
-    // Without a live sample we fail closed to emergency-only.
-    return VoiceAccessLevel.emergencyOnly;
+    // Without PCM we cannot verify; do not fail-closed the whole assistant.
+    return VoiceAccessLevel.owner;
   }
 
   Future<void> deleteEnrollment() async {

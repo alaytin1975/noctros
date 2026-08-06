@@ -22,6 +22,7 @@ class DeviceActionEngine {
     'youtube': 'com.google.android.youtube',
     'gmail': 'com.google.android.gm',
     'maps': 'com.google.android.apps.maps',
+    'google maps': 'com.google.android.apps.maps',
     'chrome': 'com.android.chrome',
     'instagram': 'com.instagram.android',
     'telegram': 'org.telegram.messenger',
@@ -29,10 +30,20 @@ class DeviceActionEngine {
     'phone': 'com.google.android.dialer',
     'camera': 'com.android.camera',
     'photos': 'com.google.android.apps.photos',
+    'gallery': 'com.google.android.apps.photos',
     'clock': 'com.google.android.deskclock',
     'calendar': 'com.google.android.calendar',
     'contacts': 'com.google.android.contacts',
+    'calculator': 'com.google.android.calculator',
+    'hesap makinesi': 'com.google.android.calculator',
   };
+
+  static const _calculatorPackages = <String>[
+    'com.google.android.calculator',
+    'com.android.calculator2',
+    'com.sec.android.app.popupcalculator',
+    'com.miui.calculator',
+  ];
 
   Future<DeviceActionResult> execute(
     ParsedDeviceIntent intent, {
@@ -86,17 +97,9 @@ class DeviceActionEngine {
             summary: 'Opened Clock',
           );
         case DeviceActionType.openCamera:
-          return _launchAndroidAction(
-            action: 'android.media.action.IMAGE_CAPTURE',
-            summary: 'Opened Camera',
-          );
+          return _launchCamera();
         case DeviceActionType.openGallery:
-          return _launchAndroidAction(
-            action: 'android.intent.action.VIEW',
-            type: 'image/*',
-            package: knownApps['photos'],
-            summary: 'Opened Gallery',
-          );
+          return _launchGallery();
         case DeviceActionType.openApp:
           return _launchApp(intent);
         case DeviceActionType.toggleFlashlight:
@@ -133,19 +136,35 @@ class DeviceActionEngine {
         success: ok,
         launchedExternally: ok,
         message: ok
-            ? 'Opening dialer for $number'
+            ? 'Calling $number.'
             : 'Unable to open the phone dialer.',
       );
     }
-    final ok = await _launchAndroidAction(
-      action: 'android.intent.action.DIAL',
-      summary: 'Opening dialer for $contact',
-    );
+    // Open dialer; contact name is spoken so user can finish the call.
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        await const AndroidIntent(
+          action: 'android.intent.action.DIAL',
+          flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        ).launch();
+        return DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: contact == null || contact.isEmpty
+              ? 'Opening phone.'
+              : 'Opening dialer for $contact.',
+        );
+      } catch (_) {}
+    }
+    final uri = Uri(scheme: 'tel', path: '');
+    final ok = await _launchUri(uri);
     return DeviceActionResult(
-      success: ok.success,
-      launchedExternally: ok.launchedExternally,
-      message: ok.success
-          ? 'Opening dialer. Select "$contact" to place the call.'
+      success: ok,
+      launchedExternally: ok,
+      message: ok
+          ? (contact == null || contact.isEmpty
+              ? 'Opening phone.'
+              : 'Opening dialer for $contact.')
           : 'Unable to open dialer for $contact.',
     );
   }
@@ -153,19 +172,88 @@ class DeviceActionEngine {
   Future<DeviceActionResult> _launchSms(ParsedDeviceIntent intent) async {
     final recipient = intent.parameters['recipient'] ?? '';
     final body = intent.parameters['body'] ?? '';
-    final uri = Uri(
-      scheme: 'sms',
-      path: recipient,
-      queryParameters: body.isEmpty ? null : {'body': body},
-    );
+    final uri = recipient.isEmpty
+        ? Uri(scheme: 'sms')
+        : Uri(
+            scheme: 'sms',
+            path: recipient,
+            queryParameters: body.isEmpty ? null : {'body': body},
+          );
     final ok = await _launchUri(uri);
     return DeviceActionResult(
       success: ok,
       launchedExternally: ok,
       message: ok
-          ? 'Opening Messages for $recipient'
+          ? (recipient.isEmpty
+              ? 'Opening messages.'
+              : 'Opening messages for $recipient.')
           : 'Unable to open the SMS app.',
     );
+  }
+
+  Future<DeviceActionResult> _launchCamera() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const DeviceActionResult(
+        success: false,
+        message: 'Camera is available on Android.',
+      );
+    }
+    // Prefer still-image camera; fall back to IMAGE_CAPTURE / camera package.
+    for (final action in const [
+      'android.media.action.STILL_IMAGE_CAMERA',
+      'android.media.action.IMAGE_CAPTURE',
+    ]) {
+      try {
+        await AndroidIntent(
+          action: action,
+          flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        ).launch();
+        return const DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: 'Opening camera.',
+        );
+      } catch (_) {}
+    }
+    return _launchApp(
+      const ParsedDeviceIntent(
+        type: DeviceActionType.openApp,
+        rawText: 'open camera',
+        parameters: {'appName': 'camera'},
+        displaySummary: 'Open camera',
+      ),
+    );
+  }
+
+  Future<DeviceActionResult> _launchGallery() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const DeviceActionResult(
+        success: false,
+        message: 'Gallery is available on Android.',
+      );
+    }
+    try {
+      await AndroidIntent(
+        action: 'android.intent.action.VIEW',
+        type: 'image/*',
+        package: knownApps['photos'],
+        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+      ).launch();
+      return const DeviceActionResult(
+        success: true,
+        launchedExternally: true,
+        message: 'Opening gallery.',
+      );
+    } catch (_) {
+      return _launchApp(
+        const ParsedDeviceIntent(
+          type: DeviceActionType.openApp,
+          rawText: 'open gallery',
+          parameters: {'appName': 'photos'},
+          displaySummary: 'Open gallery',
+        ),
+      );
+    }
   }
 
   Future<DeviceActionResult> _launchEmail(ParsedDeviceIntent intent) async {
@@ -282,11 +370,16 @@ class DeviceActionEngine {
       DeviceSettingsTarget.main => 'android.settings.SETTINGS',
     };
 
-    await AndroidIntent(action: action).launch();
+    await AndroidIntent(
+      action: action,
+      flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+    ).launch();
     return DeviceActionResult(
       success: true,
       launchedExternally: true,
-      message: 'Opened ${target.name} settings',
+      message: target == DeviceSettingsTarget.main
+          ? 'Opening settings.'
+          : 'Opening ${target.name} settings.',
     );
   }
 
@@ -310,13 +403,13 @@ class DeviceActionEngine {
         await TorchLight.disableTorch();
         return const DeviceActionResult(
           success: true,
-          message: 'Flashlight turned off',
+          message: 'Flashlight turned off.',
         );
       }
       await TorchLight.enableTorch();
       return const DeviceActionResult(
         success: true,
-        message: 'Flashlight turned on',
+        message: 'Flashlight turned on.',
       );
     } catch (error) {
       return DeviceActionResult(
@@ -362,11 +455,15 @@ class DeviceActionEngine {
   }
 
   Future<DeviceActionResult> _launchApp(ParsedDeviceIntent intent) async {
-    final appName = (intent.parameters['appName'] ?? '').toLowerCase();
+    final appName = (intent.parameters['appName'] ?? '').toLowerCase().trim();
+    if (appName.contains('calculator') || appName.contains('hesap')) {
+      return _launchCalculator();
+    }
+
     String? package = knownApps[appName];
     package ??= () {
       for (final entry in knownApps.entries) {
-        if (appName.contains(entry.key)) {
+        if (appName.contains(entry.key) || entry.key.contains(appName)) {
           return entry.value;
         }
       }
@@ -392,16 +489,70 @@ class DeviceActionEngine {
       );
     }
 
-    await AndroidIntent(
-      action: 'android.intent.action.MAIN',
-      package: package,
-      category: 'android.intent.category.LAUNCHER',
-      flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
-    ).launch();
+    try {
+      await AndroidIntent(
+        action: 'android.intent.action.MAIN',
+        package: package,
+        category: 'android.intent.category.LAUNCHER',
+        flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+      ).launch();
+      return DeviceActionResult(
+        success: true,
+        launchedExternally: true,
+        message: 'Opening $appName.',
+      );
+    } catch (_) {
+      // Some OEMs reject MAIN+LAUNCHER; try package-only launch.
+      try {
+        await AndroidIntent(
+          action: 'android.intent.action.MAIN',
+          package: package,
+          flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        ).launch();
+        return DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: 'Opening $appName.',
+        );
+      } catch (error) {
+        return DeviceActionResult(
+          success: false,
+          message: 'Could not open $appName: $error',
+        );
+      }
+    }
+  }
+
+  Future<DeviceActionResult> _launchCalculator() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const DeviceActionResult(
+        success: false,
+        message: 'Calculator requires Android.',
+      );
+    }
+    for (final package in _calculatorPackages) {
+      try {
+        await AndroidIntent(
+          action: 'android.intent.action.MAIN',
+          package: package,
+          category: 'android.intent.category.LAUNCHER',
+          flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        ).launch();
+        return const DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: 'Opening calculator.',
+        );
+      } catch (_) {}
+    }
+    final market = Uri.parse('market://search?q=calculator');
+    final ok = await _launchUri(market);
     return DeviceActionResult(
-      success: true,
-      launchedExternally: true,
-      message: 'Opening $appName',
+      success: ok,
+      launchedExternally: ok,
+      message: ok
+          ? 'Calculator not found. Opened store search.'
+          : 'Unable to open calculator.',
     );
   }
 

@@ -34,6 +34,7 @@ class _NoctrosLifecycleCoordinatorState
     with WidgetsBindingObserver {
   bool _promptedForMicrophone = false;
   bool _pipelineRunning = false;
+  void Function(String wakeWord, String transcript)? _wakeHandler;
 
   @override
   void initState() {
@@ -50,20 +51,17 @@ class _NoctrosLifecycleCoordinatorState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final voiceController = ref.read(voiceActivationProvider.notifier);
     if (state == AppLifecycleState.resumed) {
       _startVoiceIfAllowed();
       return;
     }
+    // Do not stop on inactive — system UI / dialogs would break wake loop.
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      final prepared = ref
-              .read(settingsControllerProvider)
-              .settings
-              ?.alwaysListeningPrepared ??
-          false;
-      if (!prepared) {
-        voiceController.stop();
+        state == AppLifecycleState.detached) {
+      final settings = ref.read(settingsControllerProvider).settings;
+      final keepAlive = settings?.alwaysListeningPrepared ?? true;
+      if (!keepAlive && !_pipelineRunning) {
+        ref.read(voiceActivationProvider.notifier).stop();
         unawaitedHideNotification();
       }
     }
@@ -83,7 +81,8 @@ class _NoctrosLifecycleCoordinatorState
       onTap: () => ref.read(appRouterProvider).go(HomeScreen.routePath),
     );
     await ref.read(voiceActivationProvider.notifier).initialize(
-          wakeWords: settings?.derivedWakeWords ?? const ['Noctros', 'Hey Noctros'],
+          wakeWords:
+              settings?.derivedWakeWords ?? const ['Noctros', 'Hey Noctros'],
           speechRate: settings?.speechRate ?? 0.48,
           localeId: settings?.sttLocaleId ?? 'en_US',
         );
@@ -98,6 +97,15 @@ class _NoctrosLifecycleCoordinatorState
         sttBackend: settings.sttBackend,
         cloudSttFallbackEnabled: settings.cloudSttFallbackEnabled,
       );
+      // Keep always-listening prepared so pause does not kill wake by default.
+      if (settings.wakeWordEnabled) {
+        await voice.prepareAlwaysListeningBackgroundService();
+        if (!settings.alwaysListeningPrepared) {
+          await ref.read(settingsControllerProvider.notifier).save(
+                settings.copyWith(alwaysListeningPrepared: true),
+              );
+        }
+      }
     }
     await _startVoiceIfAllowed();
     await _promptForMicrophoneIfNeeded();
@@ -128,98 +136,100 @@ class _NoctrosLifecycleCoordinatorState
       await ServiceLocator.get<VoiceNotificationService>().hide();
       return;
     }
-    final voiceController = ref.read(voiceActivationProvider.notifier);
-    final voiceState = ref.read(voiceActivationProvider);
-    if (voiceState.isActive || _pipelineRunning) {
+    if (_pipelineRunning) {
       return;
     }
 
-    await voiceController.start(
-      onWakeWordDetected: (wakeWord) async {
-        if (!mounted || _pipelineRunning) {
+    final voiceController = ref.read(voiceActivationProvider.notifier);
+
+    _wakeHandler ??= (wakeWord, transcript) async {
+      if (!mounted || _pipelineRunning) {
+        return;
+      }
+      _pipelineRunning = true;
+      ref.read(assistantUiProvider.notifier).setListening('Wake word');
+      try {
+        final session = ref.read(chatSessionProvider);
+        var conversationId = session.conversationId;
+        if (conversationId == null) {
+          await ref.read(chatSessionProvider.notifier).createConversation();
+          conversationId = ref.read(chatSessionProvider).conversationId;
+        }
+        if (conversationId == null) {
           return;
         }
-        _pipelineRunning = true;
-        ref.read(assistantUiProvider.notifier).setListening('Wake word');
-        try {
-          final session = ref.read(chatSessionProvider);
-          var conversationId = session.conversationId;
-          if (conversationId == null) {
-            await ref.read(chatSessionProvider.notifier).createConversation();
-            conversationId = ref.read(chatSessionProvider).conversationId;
-          }
-          if (conversationId == null) {
-            return;
-          }
 
-          final pipeline = ServiceLocator.get<VoiceAiOrchestrator>();
-          // Stay on the voice-first Home orb screen for normal commands.
-          ref.read(appRouterProvider).go(HomeScreen.routePath);
-          ref.read(assistantUiProvider.notifier).setListening('Listening');
-          final eventsSub = pipeline.events.listen((event) {
-            final ui = ref.read(assistantUiProvider.notifier);
-            switch (event.stage) {
-              case 'listening':
-                ui.setListening('Listening');
-              case 'thinking':
-              case 'orchestrating':
-                ui.setThinking('Thinking');
-              case 'response':
-                ui.setSpeaking('Speaking');
-              case 'emergency':
-                ui.setListening('Emergency');
-              case 'denied':
-              case 'cancelled':
-              case 'error':
-                ui.setListening('Listening');
+        final pipeline = ServiceLocator.get<VoiceAiOrchestrator>();
+        ref.read(appRouterProvider).go(HomeScreen.routePath);
+        ref.read(assistantUiProvider.notifier).setListening('Listening');
+        final eventsSub = pipeline.events.listen((event) {
+          final ui = ref.read(assistantUiProvider.notifier);
+          switch (event.stage) {
+            case 'listening':
+              ui.setListening('Listening');
+            case 'thinking':
+            case 'orchestrating':
+              ui.setThinking('Thinking');
+            case 'response':
+              ui.setSpeaking('Speaking');
+            case 'emergency':
+              ui.setListening('Emergency');
+            case 'denied':
+            case 'cancelled':
+            case 'error':
+              ui.setListening('Listening');
+          }
+          if (event.transcript != null && event.transcript!.isNotEmpty) {
+            ui.setPartial(event.transcript!);
+          }
+        });
+        await pipeline.onWakeWord(
+          wakeWord: wakeWord,
+          wakeTranscript: transcript,
+          conversationId: conversationId,
+          navigate: (route) {
+            if (route == EmergencyScreen.routePath) {
+              ref.read(appRouterProvider).go(EmergencyScreen.routePath);
             }
-            if (event.transcript != null && event.transcript!.isNotEmpty) {
-              ui.setPartial(event.transcript!);
+          },
+          confirmAction: (message) async {
+            if (!mounted) {
+              return false;
             }
-          });
-          await pipeline.onWakeWord(
-            wakeWord: wakeWord,
-            conversationId: conversationId,
-            navigate: (route) {
-              if (route == EmergencyScreen.routePath) {
-                ref.read(appRouterProvider).go(EmergencyScreen.routePath);
-              }
-              // Intentionally do not navigate to Chat — voice stays on Home.
-            },
-            confirmAction: (message) async {
-              if (!mounted) {
-                return false;
-              }
-              ref.read(assistantUiProvider.notifier).setThinking();
-              final result = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Confirm action'),
-                  content: Text(message),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Allow'),
-                    ),
-                  ],
-                ),
-              );
-              return result ?? false;
-            },
-          );
-          await ref.read(chatSessionProvider.notifier).reloadMessages();
-          await eventsSub.cancel();
-        } finally {
-          _pipelineRunning = false;
-          ref.read(assistantUiProvider.notifier).setListening('Listening');
-          await _startVoiceIfAllowed();
-        }
-      },
-    );
+            // Last-resort UI confirm if voice yes/no was unclear.
+            final result = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Confirm action'),
+                content: Text(message),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Allow'),
+                  ),
+                ],
+              ),
+            );
+            return result ?? false;
+          },
+        );
+        await ref.read(chatSessionProvider.notifier).reloadMessages();
+        await eventsSub.cancel();
+      } finally {
+        _pipelineRunning = false;
+        ref.read(assistantUiProvider.notifier).setListening('Listening');
+        // Critical: clear activation state then restart always-listening.
+        await voiceController.stop();
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await _startVoiceIfAllowed();
+      }
+    };
+
+    await voiceController.start(onWakeWordDetected: _wakeHandler!);
     await ServiceLocator.get<VoiceNotificationService>().showReady();
     ref.read(assistantUiProvider.notifier).setListening('Listening');
   }

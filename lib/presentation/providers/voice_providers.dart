@@ -46,7 +46,7 @@ class VoiceActivationController extends StateNotifier<VoiceActivationState> {
       : super(const VoiceActivationState());
 
   final VoiceEngine _voiceEngine;
-  void Function(String wakeWord)? _onWakeWordDetected;
+  void Function(String wakeWord, String transcript)? _onWakeWordDetected;
 
   Future<void> initialize({
     List<String>? wakeWords,
@@ -73,25 +73,44 @@ class VoiceActivationController extends StateNotifier<VoiceActivationState> {
   }
 
   Future<void> start({
-    required void Function(String wakeWord) onWakeWordDetected,
+    required void Function(String wakeWord, String transcript)
+        onWakeWordDetected,
   }) async {
-    if (state.isActive) {
+    _onWakeWordDetected = onWakeWordDetected;
+
+    // Recover stale UI state when the engine was stopped outside stop().
+    if (state.isActive && !_voiceEngine.isWakeWordListening) {
+      state = state.copyWith(isActive: false);
+    }
+    if (state.isActive && _voiceEngine.isWakeWordListening) {
       return;
     }
-    _onWakeWordDetected = onWakeWordDetected;
+
     await _voiceEngine.startWakeWordListening(
-      onWakeWordDetected: (wakeWord) {
+      onWakeWordDetected: (wakeWord, transcript) {
         state = state.copyWith(
           lastWakeWord: wakeWord,
+          partialTranscript: transcript,
           sessionState: VoiceSessionState.processing,
+          isActive: false,
         );
-        _onWakeWordDetected?.call(wakeWord);
+        _onWakeWordDetected?.call(wakeWord, transcript);
       },
     );
     state = state.copyWith(
       isActive: true,
       sessionState: VoiceSessionState.listening,
     );
+  }
+
+  /// Hard restart: stop wake engine, clear state, start again.
+  Future<void> restart({
+    required void Function(String wakeWord, String transcript)
+        onWakeWordDetected,
+  }) async {
+    await stop();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await start(onWakeWordDetected: onWakeWordDetected);
   }
 
   Future<void> stop() async {
@@ -109,6 +128,7 @@ class VoiceActivationController extends StateNotifier<VoiceActivationState> {
       partialTranscript: session.partialTranscript,
       sessionState: session.state,
       lastWakeWord: session.activeWakeWord ?? state.lastWakeWord,
+      isActive: _voiceEngine.isWakeWordListening,
     );
   }
 }

@@ -116,7 +116,7 @@ class SettingsRepositoryImpl implements SettingsRepository {
       sttLocaleId: json['sttLocaleId'] as String? ?? 'en_US',
       continuousVoiceEnabled: json['continuousVoiceEnabled'] as bool? ?? false,
       alwaysListeningPrepared:
-          json['alwaysListeningPrepared'] as bool? ?? false,
+          json['alwaysListeningPrepared'] as bool? ?? true,
       defaultNavigationApp:
           json['defaultNavigationApp'] as String? ?? 'google_maps',
       preferredBrowser: json['preferredBrowser'] as String? ?? 'default',

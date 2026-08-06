@@ -41,6 +41,7 @@ class VoiceAiOrchestrator {
 
   Future<void> onWakeWord({
     required String wakeWord,
+    String wakeTranscript = '',
     required String conversationId,
     required Future<bool> Function(String confirmationMessage) confirmAction,
     void Function(String route)? navigate,
@@ -50,7 +51,11 @@ class VoiceAiOrchestrator {
     }
     _pipelineBusy = true;
     try {
-      _emit('wake', 'Wake word detected: $wakeWord');
+      _emit(
+        'wake',
+        'Wake word detected: $wakeWord',
+        transcript: wakeTranscript,
+      );
       await _voiceEngine.stopWakeWordListening();
       await _voiceEngine.interruptSpeech();
 
@@ -66,13 +71,29 @@ class VoiceAiOrchestrator {
         return;
       }
 
-      // Remain on the Home orb experience — no chat navigation.
       sessions.setState(VoiceSessionState.listening);
       _emit('listening', 'Listening for command');
 
-      final transcript = await stt.recognizeOnceWithFallback(
-        listenFor: const Duration(seconds: 10),
-      );
+      // Same-utterance command: "Noctros, open camera"
+      final commandFromWake =
+          wakeWordEngine.stripWakeWord(wakeTranscript, wakeWord).trim();
+
+      String? transcript;
+      if (commandFromWake.length >= 2) {
+        transcript = commandFromWake;
+        _emit(
+          'recognized',
+          'Heard command with wake word',
+          transcript: transcript,
+        );
+      } else {
+        // Mic handoff after wake session stops, then capture command.
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        transcript = await stt.recognizeOnceWithFallback(
+          listenFor: const Duration(seconds: 10),
+        );
+      }
+
       if (transcript == null || transcript.isEmpty) {
         _emit('error', 'I did not catch that.');
         if (settings.ttsEnabled) {
@@ -92,12 +113,11 @@ class VoiceAiOrchestrator {
       );
     } finally {
       _pipelineBusy = false;
-      final settings = await _loadSettings();
-      if (settings.wakeWordEnabled) {
-        // Caller should restart wake listening after pipeline.
-      }
+      sessions.setState(VoiceSessionState.idle);
     }
   }
+
+  WakeWordEngine get wakeWordEngine => _voiceEngine.wakeWordEngine;
 
   Future<VoicePipelineEvent?> processTranscript({
     required String transcript,
@@ -168,11 +188,11 @@ class VoiceAiOrchestrator {
     if (result.isSuccess &&
         result.valueOrThrow.kind == HandleCommandKind.needsConfirmation) {
       final pending = result.valueOrThrow;
-      final allowed = await confirmAction(
-        pending.confirmationMessage ??
-            pending.pendingIntent?.displaySummary ??
-            'Allow this action?',
-      );
+      final prompt = pending.confirmationMessage ??
+          pending.pendingIntent?.displaySummary ??
+          'Allow this action?';
+      final allowed = await _confirmByVoice(prompt, settings) ??
+          await confirmAction(prompt);
       if (!allowed) {
         if (settings.ttsEnabled) {
           await tts.speak('Okay, cancelled.');
@@ -212,6 +232,33 @@ class VoiceAiOrchestrator {
       message: reply,
       transcript: transcript,
     );
+  }
+
+  /// Ask for spoken yes/no. Returns null if nothing heard (caller may fall back).
+  Future<bool?> _confirmByVoice(String prompt, UserSettings settings) async {
+    if (!settings.ttsEnabled) {
+      return null;
+    }
+    sessions.setState(VoiceSessionState.speaking);
+    await tts.speak('$prompt. Say yes to confirm, or no to cancel.');
+    sessions.setState(VoiceSessionState.listening);
+    _emit('listening', 'Awaiting confirmation');
+    final answer = await stt.recognizeOnceWithFallback(
+      listenFor: const Duration(seconds: 5),
+    );
+    if (answer == null || answer.trim().isEmpty) {
+      return null;
+    }
+    final n = answer.toLowerCase();
+    if (RegExp(
+      r'\b(yes|yeah|yep|confirm|allow|ok|okay|sure|evet|tamam|onayla)\b',
+    ).hasMatch(n)) {
+      return true;
+    }
+    if (RegExp(r'\b(no|nope|cancel|stop|hayır|iptal|vazgeç)\b').hasMatch(n)) {
+      return false;
+    }
+    return null;
   }
 
   Future<UserSettings> _loadSettings() async {

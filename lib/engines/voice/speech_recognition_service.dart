@@ -51,7 +51,7 @@ class SpeechRecognitionService {
   bool _cloudFallbackEnabled = true;
   void Function(String status)? onStatus;
 
-  bool get isListening => _listening;
+  bool get isListening => _listening || _speechToText.isListening;
   bool get isAvailable => _initialized;
 
   Future<void> initialize({
@@ -63,8 +63,14 @@ class SpeechRecognitionService {
     _backend = backend;
     _cloudFallbackEnabled = cloudFallbackEnabled;
     final available = await _speechToText.initialize(
-      onStatus: (status) => onStatus?.call(status),
-      onError: (error) => onStatus?.call('error:${error.errorMsg}'),
+      onStatus: (status) {
+        _syncListeningFromStatus(status);
+        onStatus?.call(status);
+      },
+      onError: (error) {
+        _listening = false;
+        onStatus?.call('error:${error.errorMsg}');
+      },
     );
     if (!available && _backend == SttBackend.offline) {
       throw const VoiceFailure(
@@ -76,6 +82,16 @@ class SpeechRecognitionService {
       throw const VoiceFailure(
         'Speech recognition is unavailable on this device.',
       );
+    }
+  }
+
+  void _syncListeningFromStatus(String status) {
+    if (status == SpeechToText.notListeningStatus ||
+        status == SpeechToText.doneStatus ||
+        status.startsWith('error:')) {
+      _listening = false;
+    } else if (status == SpeechToText.listeningStatus) {
+      _listening = true;
     }
   }
 
@@ -116,6 +132,12 @@ class SpeechRecognitionService {
       throw const VoiceFailure('Speech recognition unavailable.');
     }
 
+    // Never leave a prior session stuck — force-clear before opening mic.
+    if (_speechToText.isListening || _listening) {
+      await stop();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+
     _listening = true;
     var gotFinal = false;
 
@@ -126,6 +148,9 @@ class SpeechRecognitionService {
           return;
         }
         if (result.finalResult) {
+          // Always clear listening flag — even for rejected noise —
+          // otherwise wake-word sessions can never reopen the mic.
+          _listening = false;
           if (_noiseFilter.isLikelyNoise(
             words,
             confidence: result.confidence,
@@ -133,7 +158,6 @@ class SpeechRecognitionService {
             return;
           }
           gotFinal = true;
-          _listening = false;
           onFinal(
             words,
             backend: SttBackend.offline,
@@ -166,42 +190,70 @@ class SpeechRecognitionService {
     Duration listenFor = const Duration(seconds: 12),
   }) async {
     final completer = Completer<String?>();
-    await listen(
-      listenFor: listenFor,
-      onFinal: (transcript, {required backend, confidence = 1.0}) {
-        if (!completer.isCompleted) {
-          completer.complete(transcript);
-        }
-      },
-    );
-    return completer.future.timeout(
+    var lastPartial = '';
+
+    try {
+      await listen(
+        listenFor: listenFor,
+        pauseFor: const Duration(seconds: 2),
+        mode: ListenMode.dictation,
+        onPartial: (partial) {
+          lastPartial = partial;
+        },
+        onFinal: (transcript, {required backend, confidence = 1.0}) {
+          if (!completer.isCompleted) {
+            completer.complete(transcript);
+          }
+        },
+      );
+    } catch (_) {
+      if (!completer.isCompleted) {
+        completer.complete(null);
+      }
+    }
+
+    final result = await completer.future.timeout(
       listenFor + const Duration(seconds: 4),
       onTimeout: () async {
         await stop();
+        if (lastPartial.trim().isNotEmpty) {
+          return _noiseFilter.cleanTranscript(lastPartial);
+        }
         if (_cloudFallbackEnabled) {
           return _transcribeCloudFromMic(duration: listenFor);
         }
         return null;
       },
     );
+
+    await stop();
+    return result;
   }
 
   Future<void> stop() async {
     _listening = false;
-    if (_speechToText.isListening) {
-      await _speechToText.stop();
-    }
-    if (await _audioRecorder.isRecording()) {
-      await _audioRecorder.stop();
-    }
+    try {
+      if (_speechToText.isListening) {
+        await _speechToText.stop();
+      }
+    } catch (_) {}
+    try {
+      if (await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+      }
+    } catch (_) {}
   }
 
   Future<void> cancel() async {
     _listening = false;
-    await _speechToText.cancel();
-    if (await _audioRecorder.isRecording()) {
-      await _audioRecorder.stop();
-    }
+    try {
+      await _speechToText.cancel();
+    } catch (_) {}
+    try {
+      if (await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+      }
+    } catch (_) {}
   }
 
   String detectLanguageHint(String transcript) {
@@ -215,7 +267,7 @@ class SpeechRecognitionService {
     if (RegExp(r'[áéíóúñ¿¡]').hasMatch(text)) {
       return 'es_ES';
     }
-    if (RegExp(r'[ğışçöü]').hasMatch(text)) {
+    if (RegExp(r'[ğışçöü]', unicode: true).hasMatch(text)) {
       return 'tr_TR';
     }
     if (RegExp(r'[\u0600-\u06FF]').hasMatch(text)) {

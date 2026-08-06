@@ -22,7 +22,7 @@ class WakeWordEngine {
 
   static const _sessionListenFor = Duration(minutes: 30);
   static const _sessionPauseFor = Duration(seconds: 45);
-  static const _minRestartGap = Duration(seconds: 3);
+  static const _minRestartGap = Duration(seconds: 2);
   static const _maxBackoff = Duration(seconds: 30);
   static const _detectionCooldown = Duration(milliseconds: 1800);
 
@@ -55,12 +55,19 @@ class WakeWordEngine {
     required void Function(String wakeWord, String transcript) onDetected,
   }) async {
     if (_active) {
+      // Already marked active — ensure a live session exists.
+      _onDetected = onDetected;
+      if (!_sessionOpen && !_speechRecognition.isListening) {
+        await _ensureListeningSession();
+      }
       return;
     }
     _active = true;
     _onDetected = onDetected;
     _consecutiveFailures = 0;
     _restartScheduled = false;
+    _detectionLocked = false;
+    _sessionOpen = false;
     _speechRecognition.onStatus = _handleStatus;
     await _ensureListeningSession();
   }
@@ -70,6 +77,7 @@ class WakeWordEngine {
     _onDetected = null;
     _sessionOpen = false;
     _restartScheduled = false;
+    _detectionLocked = false;
     _restartTimer?.cancel();
     _restartTimer = null;
     await _speechRecognition.stop();
@@ -96,8 +104,14 @@ class WakeWordEngine {
   }
 
   Future<void> _ensureListeningSession() async {
-    if (!_active || _sessionOpen || _speechRecognition.isListening) {
+    if (!_active || _sessionOpen) {
       return;
+    }
+
+    // If STT reports listening but we have no open session, force-clear.
+    if (_speechRecognition.isListening) {
+      await _speechRecognition.stop();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
 
     final now = DateTime.now();
@@ -143,7 +157,11 @@ class WakeWordEngine {
     }
     _lastDetectionAt = now;
     _detectionLocked = true;
-    _onDetected?.call(wake, words);
+    final callback = _onDetected;
+    // Stop the wake session immediately so command STT can take the mic.
+    unawaited(stop().then((_) {
+      callback?.call(wake, words);
+    }));
     // Unlock after cooldown so the next wake can fire after pipeline returns.
     Future<void>.delayed(_detectionCooldown, () {
       _detectionLocked = false;
@@ -178,7 +196,10 @@ class WakeWordEngine {
 
   String? detect(String transcript) {
     final normalized = transcript.toLowerCase();
-    for (final wakeWord in _wakeWords) {
+    // Prefer longer wake phrases first (e.g. "Hey Noctros" before "Noctros").
+    final sorted = [..._wakeWords]
+      ..sort((a, b) => b.length.compareTo(a.length));
+    for (final wakeWord in sorted) {
       if (normalized.contains(wakeWord.toLowerCase())) {
         return wakeWord;
       }
@@ -199,6 +220,8 @@ class WakeWordEngine {
     if (index < 0) {
       return transcript.trim();
     }
-    return transcript.substring(index + wakeWord.length).trim();
+    var remainder = transcript.substring(index + wakeWord.length).trim();
+    remainder = remainder.replaceFirst(RegExp(r'^[,.\-:)!]+\s*'), '');
+    return remainder.trim();
   }
 }
