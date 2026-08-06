@@ -11,6 +11,7 @@ import '../../data/services/permission_service.dart';
 import '../../domain/repositories/action_log_repository.dart';
 import '../../domain/repositories/noctros_repositories.dart';
 import '../../domain/repositories/permission_repository.dart';
+import '../../domain/usecases/handle_user_command_use_case.dart';
 import '../../engines/ai/ai_engine.dart';
 import '../../engines/ai/cloud/openai_provider.dart';
 import '../../engines/ai/hybrid_ai_router.dart';
@@ -20,7 +21,15 @@ import '../../engines/automation/device_action_engine.dart';
 import '../../engines/automation/intent_parser.dart';
 import '../../engines/emergency/emergency_engine.dart';
 import '../../engines/memory/memory_engine.dart';
+import '../../engines/security/voice_enrollment.dart';
+import '../../engines/security/voice_print_manager.dart';
+import '../../engines/security/voice_verification.dart';
+import '../../engines/voice/speech_recognition_service.dart';
+import '../../engines/voice/speech_synthesis_service.dart';
+import '../../engines/voice/voice_ai_orchestrator.dart';
 import '../../engines/voice/voice_engine.dart';
+import '../../engines/voice/voice_permission_manager.dart';
+import '../../engines/voice/wake_word_engine.dart';
 
 typedef ServiceFactory<T> = T Function();
 
@@ -67,6 +76,11 @@ abstract final class ServiceLocator {
     _registerSingleton<PermissionRepository>(
       () => PermissionRepositoryImpl(service: get<PermissionService>()),
     );
+    _registerSingleton<VoicePermissionManager>(
+      () => VoicePermissionManager(
+        permissionRepository: get<PermissionRepository>(),
+      ),
+    );
 
     _registerSingleton<MemoryEngine>(
       () => MemoryEngine(repository: get<MemoryRepository>()),
@@ -89,7 +103,43 @@ abstract final class ServiceLocator {
         settingsRepository: get<SettingsRepository>(),
       ),
     );
-    _registerSingleton<VoiceEngine>(VoiceEngine.new);
+
+    _registerSingleton<SpeechRecognitionService>(
+      () => SpeechRecognitionService(
+        openAiConfigService: get<OpenAiConfigService>(),
+      ),
+    );
+    _registerSingleton<SpeechSynthesisService>(SpeechSynthesisService.new);
+    _registerSingleton<WakeWordEngine>(
+      () => WakeWordEngine(
+        speechRecognition: get<SpeechRecognitionService>(),
+      ),
+    );
+    _registerSingleton<VoiceEngine>(
+      () => VoiceEngine(
+        speechRecognition: get<SpeechRecognitionService>(),
+        speechSynthesis: get<SpeechSynthesisService>(),
+        wakeWordEngine: get<WakeWordEngine>(),
+      ),
+    );
+    _registerSingleton<VoicePrintManager>(
+      () => VoicePrintManager(secureStorage: get<SecureStorageService>()),
+    );
+    _registerSingleton<VoiceEnrollment>(
+      () => VoiceEnrollment(voicePrintManager: get<VoicePrintManager>()),
+    );
+    _registerSingleton<VoiceVerification>(
+      () => VoiceVerification(voicePrintManager: get<VoicePrintManager>()),
+    );
+    _registerSingleton<HandleUserCommandUseCase>(HandleUserCommandUseCase.new);
+    _registerSingleton<VoiceAiOrchestrator>(
+      () => VoiceAiOrchestrator(
+        voiceEngine: get<VoiceEngine>(),
+        voiceVerification: get<VoiceVerification>(),
+        handleUserCommandUseCase: get<HandleUserCommandUseCase>(),
+        settingsRepository: get<SettingsRepository>(),
+      ),
+    );
     _registerSingleton<EmergencyEngine>(EmergencyEngine.new);
   }
 

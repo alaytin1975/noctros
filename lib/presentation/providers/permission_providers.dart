@@ -10,6 +10,10 @@ const corePermissions = <NoctrosPermission>[
   NoctrosPermission.notification,
   NoctrosPermission.contacts,
   NoctrosPermission.location,
+  NoctrosPermission.phone,
+  NoctrosPermission.sms,
+  NoctrosPermission.ignoreBatteryOptimizations,
+  NoctrosPermission.systemAlertWindow,
 ];
 
 class PermissionsState {
@@ -94,18 +98,30 @@ String permissionLabel(NoctrosPermission permission) {
     NoctrosPermission.notification => 'Notifications',
     NoctrosPermission.contacts => 'Contacts',
     NoctrosPermission.location => 'Location',
+    NoctrosPermission.phone => 'Phone',
+    NoctrosPermission.sms => 'SMS',
+    NoctrosPermission.ignoreBatteryOptimizations => 'Battery optimization',
+    NoctrosPermission.systemAlertWindow => 'Display over other apps',
   };
 }
 
 String permissionRationale(NoctrosPermission permission) {
   return switch (permission) {
     NoctrosPermission.microphone =>
-      'Noctros needs microphone access to hear "Hey Noctros" and voice commands.',
+      'Noctros needs microphone access for wake word and voice commands.',
     NoctrosPermission.notification =>
       'Notifications let Noctros alert you during emergencies and important events.',
     NoctrosPermission.contacts =>
       'Contacts access enables emergency notifications to trusted people.',
     NoctrosPermission.location =>
       'Location helps Noctros share your position during emergency responses.',
+    NoctrosPermission.phone =>
+      'Phone access lets Noctros open the dialer for calls you approve.',
+    NoctrosPermission.sms =>
+      'SMS access lets Noctros open Messages with drafts you approve.',
+    NoctrosPermission.ignoreBatteryOptimizations =>
+      'Reduces OS killing of wake-word listening during battery optimization.',
+    NoctrosPermission.systemAlertWindow =>
+      'Optional overlay support for future always-available voice controls.',
   };
 }

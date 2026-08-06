@@ -64,6 +64,16 @@ class SettingsRepositoryImpl implements SettingsRepository {
       'preferredBrowser': settings.preferredBrowser,
       'rememberPreferredContacts': settings.rememberPreferredContacts,
       'confirmDeviceActions': settings.confirmDeviceActions,
+      'assistantName': settings.assistantName,
+      'wakeWordEnabled': settings.wakeWordEnabled,
+      'voiceGender': settings.voiceGender.name,
+      'speechPitch': settings.speechPitch,
+      'speechVolume': settings.speechVolume,
+      'voiceIdEnabled': settings.voiceIdEnabled,
+      'cloudSttFallbackEnabled': settings.cloudSttFallbackEnabled,
+      'sttBackend': settings.sttBackend.name,
+      'ttsBackend': settings.ttsBackend.name,
+      'emergencyNumber': settings.emergencyNumber,
       'emergencyContacts': settings.emergencyContacts
           .map(
             (contact) => {
@@ -113,6 +123,23 @@ class SettingsRepositoryImpl implements SettingsRepository {
       rememberPreferredContacts:
           json['rememberPreferredContacts'] as bool? ?? false,
       confirmDeviceActions: json['confirmDeviceActions'] as bool? ?? true,
+      assistantName: json['assistantName'] as String? ?? 'Noctros',
+      wakeWordEnabled: json['wakeWordEnabled'] as bool? ?? true,
+      voiceGender: VoiceGender.values.byName(
+        json['voiceGender'] as String? ?? VoiceGender.system.name,
+      ),
+      speechPitch: (json['speechPitch'] as num?)?.toDouble() ?? 1.0,
+      speechVolume: (json['speechVolume'] as num?)?.toDouble() ?? 1.0,
+      voiceIdEnabled: json['voiceIdEnabled'] as bool? ?? false,
+      cloudSttFallbackEnabled:
+          json['cloudSttFallbackEnabled'] as bool? ?? true,
+      sttBackend: SttBackend.values.byName(
+        json['sttBackend'] as String? ?? SttBackend.auto.name,
+      ),
+      ttsBackend: TtsBackend.values.byName(
+        json['ttsBackend'] as String? ?? TtsBackend.offline.name,
+      ),
+      emergencyNumber: json['emergencyNumber'] as String? ?? '112',
     );
   }
 }

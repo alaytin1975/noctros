@@ -48,6 +48,8 @@ class IntentParser {
     _matchSms,
     _matchEmail,
     _matchNavigate,
+    _matchFlashlight,
+    _matchMusic,
     _matchOpenBrowser,
     _matchOpenSettings,
     _matchOpenSystemSurface,
@@ -222,6 +224,55 @@ class IntentParser {
       parameters: {'target': target.name},
       displaySummary: 'Open ${target.name} settings',
     );
+  }
+
+  static ParsedDeviceIntent? _matchFlashlight(String n, String original) {
+    if (RegExp(r'\b(turn on|enable|open)\s+(the\s+)?(flashlight|torch)\b')
+        .hasMatch(n)) {
+      return ParsedDeviceIntent(
+        type: DeviceActionType.toggleFlashlight,
+        rawText: original,
+        confidence: 0.94,
+        parameters: {'state': 'on'},
+        displaySummary: 'Turn on flashlight',
+      );
+    }
+    if (RegExp(r'\b(turn off|disable|close)\s+(the\s+)?(flashlight|torch)\b')
+        .hasMatch(n)) {
+      return ParsedDeviceIntent(
+        type: DeviceActionType.toggleFlashlight,
+        rawText: original,
+        confidence: 0.94,
+        parameters: {'state': 'off'},
+        displaySummary: 'Turn off flashlight',
+      );
+    }
+    if (RegExp(r'\b(flashlight|torch)\b').hasMatch(n) &&
+        RegExp(r'\b(on|off|toggle)\b').hasMatch(n)) {
+      final on = n.contains('on') && !n.contains('off');
+      return ParsedDeviceIntent(
+        type: DeviceActionType.toggleFlashlight,
+        rawText: original,
+        confidence: 0.9,
+        parameters: {'state': on ? 'on' : 'off'},
+        displaySummary: on ? 'Turn on flashlight' : 'Turn off flashlight',
+      );
+    }
+    return null;
+  }
+
+  static ParsedDeviceIntent? _matchMusic(String n, String original) {
+    if (RegExp(r'\b(play|open|start)\s+(music|spotify|songs?)\b').hasMatch(n) ||
+        n == 'play music') {
+      return ParsedDeviceIntent(
+        type: DeviceActionType.playMusic,
+        rawText: original,
+        confidence: 0.9,
+        parameters: {'appName': n.contains('spotify') ? 'spotify' : 'music'},
+        displaySummary: 'Play music',
+      );
+    }
+    return null;
   }
 
   static ParsedDeviceIntent? _matchOpenSystemSurface(String n, String original) {

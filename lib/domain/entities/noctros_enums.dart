@@ -37,3 +37,28 @@ enum PrivacyCloudPolicy {
   askEveryTime,
   whenRequired,
 }
+
+enum VoiceGender {
+  system,
+  female,
+  male,
+}
+
+enum VoiceAccessLevel {
+  owner,
+  guest,
+  unknown,
+  emergencyOnly,
+}
+
+enum SttBackend {
+  offline,
+  cloud,
+  auto,
+}
+
+enum TtsBackend {
+  offline,
+  cloud,
+  auto,
+}

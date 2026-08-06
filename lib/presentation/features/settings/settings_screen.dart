@@ -13,6 +13,7 @@ import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
 import '../../providers/permission_providers.dart';
 import '../../widgets/permission_prompt_sheet.dart';
+import 'voice_settings_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -106,6 +107,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 8),
                 const _SectionHeader(title: 'Voice'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Voice Settings'),
+                  subtitle: Text(
+                    'Wake word, Voice ID, language, TTS — assistant: ${settings.assistantName}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const VoiceSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Speak replies (TTS)'),

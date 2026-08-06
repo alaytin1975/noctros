@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/foundation.dart';
+import 'package:torch_light/torch_light.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/entities/device_action_entities.dart';
@@ -98,6 +99,10 @@ class DeviceActionEngine {
           );
         case DeviceActionType.openApp:
           return _launchApp(intent);
+        case DeviceActionType.toggleFlashlight:
+          return _toggleFlashlight(intent);
+        case DeviceActionType.playMusic:
+          return _launchMusic(intent);
         case DeviceActionType.enableVoiceMode:
           return const DeviceActionResult(
             success: true,
@@ -282,6 +287,77 @@ class DeviceActionEngine {
       success: true,
       launchedExternally: true,
       message: 'Opened ${target.name} settings',
+    );
+  }
+
+  Future<DeviceActionResult> _toggleFlashlight(ParsedDeviceIntent intent) async {
+    if (kIsWeb) {
+      return const DeviceActionResult(
+        success: false,
+        message: 'Flashlight is unavailable on this platform.',
+      );
+    }
+    try {
+      final available = await TorchLight.isTorchAvailable();
+      if (!available) {
+        return const DeviceActionResult(
+          success: false,
+          message: 'No flashlight available on this device.',
+        );
+      }
+      final state = intent.parameters['state'] ?? 'on';
+      if (state == 'off') {
+        await TorchLight.disableTorch();
+        return const DeviceActionResult(
+          success: true,
+          message: 'Flashlight turned off',
+        );
+      }
+      await TorchLight.enableTorch();
+      return const DeviceActionResult(
+        success: true,
+        message: 'Flashlight turned on',
+      );
+    } catch (error) {
+      return DeviceActionResult(
+        success: false,
+        message: 'Could not control flashlight: $error',
+      );
+    }
+  }
+
+  Future<DeviceActionResult> _launchMusic(ParsedDeviceIntent intent) async {
+    final appName = (intent.parameters['appName'] ?? 'music').toLowerCase();
+    if (appName.contains('spotify')) {
+      return _launchApp(
+        ParsedDeviceIntent(
+          type: DeviceActionType.openApp,
+          rawText: intent.rawText,
+          parameters: const {'appName': 'spotify'},
+          displaySummary: 'Open Spotify',
+        ),
+      );
+    }
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        await const AndroidIntent(
+          action: 'android.intent.action.MUSIC_PLAYER',
+          flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        ).launch();
+        return const DeviceActionResult(
+          success: true,
+          launchedExternally: true,
+          message: 'Opening music player',
+        );
+      } catch (_) {}
+    }
+    return _launchApp(
+      ParsedDeviceIntent(
+        type: DeviceActionType.openApp,
+        rawText: intent.rawText,
+        parameters: const {'appName': 'spotify'},
+        displaySummary: 'Open Spotify',
+      ),
     );
   }
 

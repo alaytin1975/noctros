@@ -4,6 +4,10 @@ enum NoctrosPermission {
   notification,
   contacts,
   location,
+  phone,
+  sms,
+  ignoreBatteryOptimizations,
+  systemAlertWindow,
 }
 
 enum NoctrosPermissionStatus {

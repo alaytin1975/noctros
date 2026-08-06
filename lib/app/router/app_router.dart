@@ -6,6 +6,7 @@ import '../../presentation/features/chat/chat_screen.dart';
 import '../../presentation/features/emergency/emergency_screen.dart';
 import '../../presentation/features/home/home_screen.dart';
 import '../../presentation/features/settings/settings_screen.dart';
+import '../../presentation/features/settings/voice_settings_screen.dart';
 import '../../presentation/widgets/main_shell.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -65,6 +66,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: SettingsScreen.routePath,
                 name: SettingsScreen.routeName,
                 builder: (context, state) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'voice',
+                    name: VoiceSettingsScreen.routeName,
+                    builder: (context, state) => const VoiceSettingsScreen(),
+                  ),
+                ],
               ),
             ],
           ),

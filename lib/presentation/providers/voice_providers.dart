@@ -53,7 +53,7 @@ class VoiceActivationController extends StateNotifier<VoiceActivationState> {
     double speechRate = 0.48,
     String localeId = 'en_US',
   }) async {
-    if (state.isInitializing || state.isActive) {
+    if (state.isInitializing) {
       return;
     }
     state = state.copyWith(isInitializing: true, errorMessage: null);

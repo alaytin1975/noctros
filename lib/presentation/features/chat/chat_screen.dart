@@ -5,11 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/di/service_locator.dart';
 import '../../../core/constants/noctros_constants.dart';
+import '../../../domain/entities/device_action_entities.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/entities/permission_entities.dart';
-import '../../../domain/entities/device_action_entities.dart';
 import '../../../domain/usecases/handle_user_command_use_case.dart';
+import '../../../engines/security/voice_verification.dart';
 import '../../../engines/voice/voice_engine.dart';
 import '../../providers/noctros_providers.dart';
 import '../../providers/openai_providers.dart';
@@ -145,7 +146,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           return;
         }
         _controller.text = transcript;
-        await _sendMessage();
+        await _sendMessage(fromVoice: true);
       },
       onPartial: (partial) {
         if (!mounted) {
@@ -156,7 +157,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage({bool fromVoice = false}) async {
     final text = _controller.text.trim();
     if (text.isEmpty) {
       return;
@@ -173,6 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await _processCommand(
       conversationId: conversationId,
       userMessage: text,
+      fromVoice: fromVoice,
     );
   }
 
@@ -181,7 +183,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     required String userMessage,
     bool userConfirmed = false,
     ParsedDeviceIntent? confirmedIntent,
+    bool fromVoice = false,
   }) async {
+    if (fromVoice) {
+      final settings = ref.read(settingsControllerProvider).settings;
+      final voiceIdEnabled = settings?.voiceIdEnabled ?? false;
+      final verification =
+          await ServiceLocator.get<VoiceVerification>().authorizeCommand(
+                transcript: userMessage,
+                voiceIdEnabled: voiceIdEnabled,
+              );
+      if (verification.accessLevel == VoiceAccessLevel.emergencyOnly &&
+          ServiceLocator.get<VoiceVerification>()
+              .isEmergencyCommand(userMessage)) {
+        if (mounted) {
+          unawaited(
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const EmergencyScreen(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      if (voiceIdEnabled &&
+          !ServiceLocator.get<VoiceVerification>()
+              .canExecuteDeviceAction(verification.accessLevel)) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(verification.message)),
+        );
+        await _speak(
+          'Voice not recognized. Only emergency commands are allowed.',
+        );
+        return;
+      }
+    }
+
     ref.read(chatSessionProvider.notifier).setSending(true);
     ref.read(chatSessionProvider.notifier).setStreamingContent('');
 

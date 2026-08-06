@@ -105,6 +105,16 @@ class UserSettings {
     this.preferredBrowser = 'default',
     this.rememberPreferredContacts = false,
     this.confirmDeviceActions = true,
+    this.assistantName = 'Noctros',
+    this.wakeWordEnabled = true,
+    this.voiceGender = VoiceGender.system,
+    this.speechPitch = 1.0,
+    this.speechVolume = 1.0,
+    this.voiceIdEnabled = false,
+    this.cloudSttFallbackEnabled = true,
+    this.sttBackend = SttBackend.auto,
+    this.ttsBackend = TtsBackend.offline,
+    this.emergencyNumber = '112',
   });
 
   final List<String> wakeWords;
@@ -124,6 +134,16 @@ class UserSettings {
   final String preferredBrowser;
   final bool rememberPreferredContacts;
   final bool confirmDeviceActions;
+  final String assistantName;
+  final bool wakeWordEnabled;
+  final VoiceGender voiceGender;
+  final double speechPitch;
+  final double speechVolume;
+  final bool voiceIdEnabled;
+  final bool cloudSttFallbackEnabled;
+  final SttBackend sttBackend;
+  final TtsBackend ttsBackend;
+  final String emergencyNumber;
 
   static UserSettings defaults() {
     return const UserSettings(
@@ -136,6 +156,17 @@ class UserSettings {
       emergencyContacts: [],
       darkModeEnabled: false,
     );
+  }
+
+  /// Builds wake phrases from the current assistant name.
+  List<String> get derivedWakeWords {
+    final name = assistantName.trim();
+    if (name.isEmpty) {
+      return wakeWords;
+    }
+    final hey = 'Hey $name';
+    final unique = <String>{hey, name, ...wakeWords};
+    return unique.toList();
   }
 
   UserSettings copyWith({
@@ -156,6 +187,16 @@ class UserSettings {
     String? preferredBrowser,
     bool? rememberPreferredContacts,
     bool? confirmDeviceActions,
+    String? assistantName,
+    bool? wakeWordEnabled,
+    VoiceGender? voiceGender,
+    double? speechPitch,
+    double? speechVolume,
+    bool? voiceIdEnabled,
+    bool? cloudSttFallbackEnabled,
+    SttBackend? sttBackend,
+    TtsBackend? ttsBackend,
+    String? emergencyNumber,
   }) {
     return UserSettings(
       wakeWords: wakeWords ?? this.wakeWords,
@@ -181,6 +222,17 @@ class UserSettings {
       rememberPreferredContacts:
           rememberPreferredContacts ?? this.rememberPreferredContacts,
       confirmDeviceActions: confirmDeviceActions ?? this.confirmDeviceActions,
+      assistantName: assistantName ?? this.assistantName,
+      wakeWordEnabled: wakeWordEnabled ?? this.wakeWordEnabled,
+      voiceGender: voiceGender ?? this.voiceGender,
+      speechPitch: speechPitch ?? this.speechPitch,
+      speechVolume: speechVolume ?? this.speechVolume,
+      voiceIdEnabled: voiceIdEnabled ?? this.voiceIdEnabled,
+      cloudSttFallbackEnabled:
+          cloudSttFallbackEnabled ?? this.cloudSttFallbackEnabled,
+      sttBackend: sttBackend ?? this.sttBackend,
+      ttsBackend: ttsBackend ?? this.ttsBackend,
+      emergencyNumber: emergencyNumber ?? this.emergencyNumber,
     );
   }
 }

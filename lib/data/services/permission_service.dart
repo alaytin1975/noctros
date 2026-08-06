@@ -10,6 +10,12 @@ class PermissionService {
       NoctrosPermission.notification => handler.Permission.notification,
       NoctrosPermission.contacts => handler.Permission.contacts,
       NoctrosPermission.location => handler.Permission.locationWhenInUse,
+      NoctrosPermission.phone => handler.Permission.phone,
+      NoctrosPermission.sms => handler.Permission.sms,
+      NoctrosPermission.ignoreBatteryOptimizations =>
+        handler.Permission.ignoreBatteryOptimizations,
+      NoctrosPermission.systemAlertWindow =>
+        handler.Permission.systemAlertWindow,
     };
   }
 
@@ -22,8 +28,7 @@ class PermissionService {
       handler.PermissionStatus.restricted =>
         NoctrosPermissionStatus.restricted,
       handler.PermissionStatus.limited => NoctrosPermissionStatus.limited,
-      handler.PermissionStatus.provisional =>
-        NoctrosPermissionStatus.granted,
+      handler.PermissionStatus.provisional => NoctrosPermissionStatus.granted,
     };
   }
 

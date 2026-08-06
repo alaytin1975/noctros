@@ -1,13 +1,13 @@
 # Noctros
 
-Noctros is a voice-first AI operating system for smartphones — a trusted digital partner that controls your phone, manages your life, and protects you in emergencies.
+Noctros is a voice-first AI device assistant for smartphones — wake it by name, control the phone with confirmed actions, and keep emergencies available to anyone.
 
 ## Requirements
 
 - Flutter SDK 3.24+
 - Dart 3.5+
 - Android Studio / Xcode for device builds
-- OpenAI API key (for cloud AI chat)
+- OpenAI API key (cloud AI chat + optional Whisper STT fallback)
 
 ## Setup
 
@@ -19,50 +19,59 @@ flutter pub get
 flutter run
 ```
 
-### OpenAI `.env`
-
-```env
-OPENAI_API_KEY=sk-your-openai-api-key
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_BASE_URL=https://api.openai.com/v1
-```
-
-`.env` is gitignored. You can also store the API key securely in **Settings → OpenAI**.
-
 ## Architecture
-
-Clean Architecture with independent engines:
 
 ```
 lib/
-├── app/           # Bootstrap, routing, dependency injection
-├── core/          # Config, prompts, errors, utilities
-├── domain/        # Entities, repository contracts, use cases
-├── data/          # SQLite, secure storage, repositories
-├── presentation/  # UI, themes, feature screens, Riverpod
-└── engines/       # AI, Voice, Memory, Emergency, Automation
+├── app/                 # Bootstrap, routing, DI
+├── core/                # Config, prompts, errors
+├── domain/              # Entities, repositories, use cases
+├── data/                # SQLite, secure storage, repos
+├── presentation/        # UI + Riverpod
+├── engines/
+│   ├── ai/              # Hybrid AI router
+│   ├── automation/      # Intent parser + device actions
+│   ├── emergency/       # SOS call/SMS/GPS/flashlight
+│   ├── security/        # Voice ID (print/enroll/verify)
+│   └── voice/           # Modular Voice Core
 ```
 
-### Device assistant flow (v0.5)
+### Voice pipeline
 
-1. User text/voice enters Chat  
-2. `IntentParser` matches structured device intents  
-3. `AiOrchestrator` routes to `DeviceActionEngine` or AI chat fallback  
-4. Sensitive actions (call / SMS / navigation) require confirmation  
-5. Safe action logs + optional memory (user-approved)
+```
+Wake word → Speech Recognition → Voice ID → Intent Parser
+        → AI Orchestrator → Device Action → Voice Response
+```
 
-## v0.5 highlights
+### Security model
 
-- Open apps, dialer, SMS, email, Maps, contacts, calendar, clock, camera, gallery, browser, system settings
-- Natural voice/text commands (“Call John”, “Open WhatsApp”, “Navigate to home”)
-- Extensible intent parser + central AI orchestrator
-- Home dashboard: quick actions, shortcuts, recent AI actions, device status
-- Memory for favorite apps/destinations/commands (contacts only with approval)
-- Privacy controls: confirmations, export/delete local data, permissions overview
+| Speaker | Access |
+|---|---|
+| Owner (Voice ID match or Voice ID off) | Full assistant + device actions |
+| Unknown / guest (Voice ID on) | Emergency commands only |
+| Any speaker | Help / Emergency / Call 112 / Save me |
 
-## v0.4 highlights (preserved)
+Voice prints are stored encrypted in secure storage and never uploaded.
 
-- Streaming OpenAI responses with offline fallback
-- Continuous voice conversation + interruption
-- Chat search, favorites, pins, export
-- Markdown chat bubbles and Quick SOS
+### Permission flow
+
+1. App bootstrap refreshes permission snapshots  
+2. Microphone prompt for wake listening  
+3. Voice Settings / Settings overview for Phone, SMS, Location, Notifications, Battery optimization, Overlay  
+4. Denied permissions fail gracefully; sensitive actions still require user confirmation  
+
+## v0.6 Voice Core
+
+- Modular Voice Engine: WakeWord, STT, TTS, Session, NoiseFilter, PermissionManager
+- Configurable assistant name / wake word (Noctros, Nova, Friday, Jarvis, …)
+- On-device Voice ID enrollment + verification
+- Emergency mode with dialer, contacts SMS, GPS, SOS flashlight
+- Offline-first STT with Whisper cloud fallback
+- TTS gender/speed/pitch/volume + interrupt + queue
+- Voice AI orchestrator pipeline
+- Flashlight + music device actions
+- Dedicated Voice Settings page
+
+## v0.5 preserved
+
+Device actions, confirmations, home dashboard, memory, chat streaming, and privacy export/delete remain intact.

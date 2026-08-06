@@ -12,6 +12,8 @@ enum DeviceActionType {
   openBrowser,
   openSettings,
   enableVoiceMode,
+  toggleFlashlight,
+  playMusic,
   unknown,
 }
 
