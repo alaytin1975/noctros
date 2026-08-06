@@ -419,9 +419,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
             child: Row(
               children: [
+                IconButton(
+                  tooltip: 'Back',
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/');
+                    }
+                  },
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
                 Text('Chat', style: theme.textTheme.headlineMedium),
                 const Spacer(),
                 if (_isListening)

@@ -2,14 +2,19 @@
 
 Noctros is a premium voice-first AI device assistant for smartphones.
 
+## v0.8 highlights
+
+- Voice-first Home: living AI orb, energy waves, equalizer
+- No bottom navigation — Settings + SOS only (Chat/History via menu)
+- Fully automatic wake → listen → think → speak → return
+- Silent always-listening with stable mic sessions
+- Persistent “Noctros is ready” notification
+
 ## v0.7 highlights
 
 - Commercial dark UI with glassmorphism and Material 3
-- Animated AI Orb (idle / listening / thinking / speaking)
-- Silent always-listening wake word with stable mic sessions
-- Persistent “Noctros is ready” notification
 - ChatGPT-style conversation experience
-- Modern Home / Chat / History / Settings navigation
+- History search / rename / favorites
 
 ## Setup
 

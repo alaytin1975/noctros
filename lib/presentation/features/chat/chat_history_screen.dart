@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../domain/entities/noctros_entities.dart';
@@ -70,9 +71,19 @@ class _ChatHistoryScreenState extends ConsumerState<ChatHistoryScreen> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            padding: const EdgeInsets.fromLTRB(8, 16, 12, 8),
             child: Row(
               children: [
+                IconButton(
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/');
+                    }
+                  },
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
                 Text('History', style: theme.textTheme.headlineMedium),
                 const Spacer(),
                 IconButton(

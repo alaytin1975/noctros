@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/di/service_locator.dart';
@@ -59,13 +60,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: const EdgeInsets.fromLTRB(12, 8, 20, 32),
         children: [
-          Text('Settings', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 6),
-          Text(
-            'Voice, privacy, and assistant preferences',
-            style: theme.textTheme.bodyMedium,
+          Row(
+            children: [
+              IconButton(
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/');
+                  }
+                },
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+              Text('Settings', style: theme.textTheme.headlineMedium),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              'Voice, privacy, and assistant preferences',
+              style: theme.textTheme.bodyMedium,
+            ),
           ),
           const SizedBox(height: 20),
           GlassPanel(

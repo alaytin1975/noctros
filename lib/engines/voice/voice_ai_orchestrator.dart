@@ -66,9 +66,8 @@ class VoiceAiOrchestrator {
         return;
       }
 
-      navigate?.call('/chat');
+      // Remain on the Home orb experience — no chat navigation.
       sessions.setState(VoiceSessionState.listening);
-      // Silent acknowledgement — no TTS beep/chime on wake.
       _emit('listening', 'Listening for command');
 
       final transcript = await stt.recognizeOnceWithFallback(
@@ -84,6 +83,7 @@ class VoiceAiOrchestrator {
       }
 
       sessions.setState(VoiceSessionState.processing);
+      _emit('thinking', 'Processing', transcript: transcript);
       await processTranscript(
         transcript: transcript,
         conversationId: conversationId,

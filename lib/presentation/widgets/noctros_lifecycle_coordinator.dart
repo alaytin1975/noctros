@@ -7,8 +7,8 @@ import '../../domain/entities/permission_entities.dart';
 import '../../engines/voice/voice_ai_orchestrator.dart';
 import '../../engines/voice/voice_engine.dart';
 import '../../engines/voice/voice_notification_service.dart';
-import '../features/chat/chat_screen.dart';
 import '../features/emergency/emergency_screen.dart';
+import '../features/home/home_screen.dart';
 import '../providers/assistant_ui_provider.dart';
 import '../providers/noctros_providers.dart';
 import '../providers/permission_providers.dart';
@@ -80,7 +80,7 @@ class _NoctrosLifecycleCoordinatorState
     final voice = ServiceLocator.get<VoiceEngine>();
     final notifications = ServiceLocator.get<VoiceNotificationService>();
     await notifications.initialize(
-      onTap: () => ref.read(appRouterProvider).go(ChatScreen.routePath),
+      onTap: () => ref.read(appRouterProvider).go(HomeScreen.routePath),
     );
     await ref.read(voiceActivationProvider.notifier).initialize(
           wakeWords: settings?.derivedWakeWords ?? const ['Noctros', 'Hey Noctros'],
@@ -153,21 +153,44 @@ class _NoctrosLifecycleCoordinatorState
           }
 
           final pipeline = ServiceLocator.get<VoiceAiOrchestrator>();
-          ref.read(assistantUiProvider.notifier).setListening();
+          // Stay on the voice-first Home orb screen for normal commands.
+          ref.read(appRouterProvider).go(HomeScreen.routePath);
+          ref.read(assistantUiProvider.notifier).setListening('Listening');
+          final eventsSub = pipeline.events.listen((event) {
+            final ui = ref.read(assistantUiProvider.notifier);
+            switch (event.stage) {
+              case 'listening':
+                ui.setListening('Listening');
+              case 'thinking':
+              case 'orchestrating':
+                ui.setThinking('Thinking');
+              case 'response':
+                ui.setSpeaking('Speaking');
+              case 'emergency':
+                ui.setListening('Emergency');
+              case 'denied':
+              case 'cancelled':
+              case 'error':
+                ui.setListening('Listening');
+            }
+            if (event.transcript != null && event.transcript!.isNotEmpty) {
+              ui.setPartial(event.transcript!);
+            }
+          });
           await pipeline.onWakeWord(
             wakeWord: wakeWord,
             conversationId: conversationId,
             navigate: (route) {
               if (route == EmergencyScreen.routePath) {
                 ref.read(appRouterProvider).go(EmergencyScreen.routePath);
-              } else {
-                ref.read(appRouterProvider).go(ChatScreen.routePath);
               }
+              // Intentionally do not navigate to Chat — voice stays on Home.
             },
             confirmAction: (message) async {
               if (!mounted) {
                 return false;
               }
+              ref.read(assistantUiProvider.notifier).setThinking();
               final result = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
@@ -189,15 +212,16 @@ class _NoctrosLifecycleCoordinatorState
             },
           );
           await ref.read(chatSessionProvider.notifier).reloadMessages();
+          await eventsSub.cancel();
         } finally {
           _pipelineRunning = false;
-          ref.read(assistantUiProvider.notifier).setIdle();
+          ref.read(assistantUiProvider.notifier).setListening('Listening');
           await _startVoiceIfAllowed();
         }
       },
     );
     await ServiceLocator.get<VoiceNotificationService>().showReady();
-    ref.read(assistantUiProvider.notifier).setIdle('Ready');
+    ref.read(assistantUiProvider.notifier).setListening('Listening');
   }
 
   @override
