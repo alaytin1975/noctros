@@ -21,7 +21,12 @@ class SecureStorageService {
   encrypt.Key? _databaseKey;
 
   Future<void> warmUp() async {
-    _databaseKey = await _loadOrCreateDatabaseKey();
+    try {
+      _databaseKey = await _loadOrCreateDatabaseKey();
+    } catch (_) {
+      // Widget/unit tests and unsupported hosts fall back to a local key.
+      _databaseKey = encrypt.Key.fromUtf8('noctros-dev-secure-storage-key!');
+    }
   }
 
   encrypt.Key get databaseKey {

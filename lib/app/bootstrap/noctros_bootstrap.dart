@@ -1,4 +1,5 @@
 import '../../data/local/database/noctros_database.dart';
+import '../../data/local/seed/communication_seed.dart';
 import '../../data/local/secure/secure_storage_service.dart';
 import '../di/service_locator.dart';
 
@@ -7,6 +8,8 @@ abstract final class NoctrosBootstrap {
   static Future<void> initialize() async {
     await ServiceLocator.registerCoreServices();
     await ServiceLocator.get<SecureStorageService>().warmUp();
-    await ServiceLocator.get<NoctrosDatabase>().open();
+    final database = ServiceLocator.get<NoctrosDatabase>();
+    await database.open();
+    await CommunicationSeed.ensureSeeded(database);
   }
 }

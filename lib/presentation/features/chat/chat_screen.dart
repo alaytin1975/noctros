@@ -9,7 +9,7 @@ import '../../providers/noctros_providers.dart';
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
-  static const routePath = '/chat';
+  static const routePath = '/assistant/chat';
   static const routeName = 'chat';
 
   @override

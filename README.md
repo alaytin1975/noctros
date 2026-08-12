@@ -1,12 +1,20 @@
 # Noctros
 
-Noctros is a voice-first AI operating system for smartphones — a trusted digital partner that controls your phone, manages your life, and protects you in emergencies.
+Noctros is an iPhone-ready Flutter communication app — messages, calls, contacts, and a voice-first AI assistant in one place.
+
+## Features
+
+- **Messages** — inbox, threaded chat, compose new conversations
+- **Calls** — audio/video call UI with call history
+- **Contacts** — favorites, search, quick message/call actions
+- **Assistant** — talk to Noctros (local-first AI) and emergency tools
+- **Privacy** — encrypted local storage, opt-in memory, cloud only when permitted
 
 ## Requirements
 
 - Flutter SDK 3.24+
 - Dart 3.5+
-- Android Studio / Xcode for device builds
+- Xcode for iPhone builds
 
 ## Setup
 
@@ -14,8 +22,7 @@ Noctros is a voice-first AI operating system for smartphones — a trusted digit
 git clone <repo-url> noctros
 cd noctros
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs
-flutter run
+flutter run -d ios
 ```
 
 ## Architecture
@@ -32,12 +39,9 @@ lib/
 └── engines/       # AI, Voice, Memory, Emergency, Automation
 ```
 
-## Privacy
+## iPhone notes
 
-- Local processing by default
-- Encrypted SQLite database
-- Cloud AI only when required and permitted
-- Memory is opt-in and fully deletable
+Privacy usage strings for microphone, camera, speech, contacts, and location are configured in `ios/Runner/Info.plist`. Portrait is the primary phone orientation.
 
 ## Wake Words
 

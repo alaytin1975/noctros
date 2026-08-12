@@ -37,3 +37,22 @@ enum PrivacyCloudPolicy {
   askEveryTime,
   whenRequired,
 }
+
+enum ThreadMessageStatus {
+  sending,
+  sent,
+  delivered,
+  read,
+  failed,
+}
+
+enum CallDirection {
+  outgoing,
+  incoming,
+  missed,
+}
+
+enum CallKind {
+  audio,
+  video,
+}
