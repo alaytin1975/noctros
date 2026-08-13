@@ -8,7 +8,7 @@ import '../../../domain/usecases/trigger_emergency_use_case.dart';
 class EmergencyScreen extends ConsumerStatefulWidget {
   const EmergencyScreen({super.key});
 
-  static const routePath = '/emergency';
+  static const routePath = '/assistant/emergency';
   static const routeName = 'emergency';
 
   @override

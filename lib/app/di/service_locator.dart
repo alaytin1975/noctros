@@ -1,9 +1,11 @@
 import '../../data/local/database/noctros_database.dart';
 import '../../data/local/secure/secure_storage_service.dart';
 import '../../data/repositories/ai_repository_impl.dart';
+import '../../data/repositories/communication_repository_impl.dart';
 import '../../data/repositories/conversation_repository_impl.dart';
 import '../../data/repositories/memory_repository_impl.dart';
 import '../../data/repositories/settings_repository_impl.dart';
+import '../../domain/repositories/communication_repository.dart';
 import '../../domain/repositories/noctros_repositories.dart';
 import '../../engines/ai/ai_engine.dart';
 import '../../engines/ai/cloud/cloud_ai_provider.dart';
@@ -38,6 +40,9 @@ abstract final class ServiceLocator {
     );
     _registerSingleton<ConversationRepository>(
       () => ConversationRepositoryImpl(database: get<NoctrosDatabase>()),
+    );
+    _registerSingleton<CommunicationRepository>(
+      () => CommunicationRepositoryImpl(database: get<NoctrosDatabase>()),
     );
     _registerSingleton<MemoryRepository>(
       () => MemoryRepositoryImpl(database: get<NoctrosDatabase>()),
