@@ -1,11 +1,9 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/constants/noctros_constants.dart';
+import '../../../core/platform/database_path.dart';
 import '../../../domain/entities/noctros_enums.dart';
 
 class ConversationRecord {
@@ -442,21 +440,11 @@ class NoctrosDatabase {
     return rows.map(_mapCall).toList();
   }
 
-  Future<String> _resolveDatabasePath() async {
-    if (databasePath != null) {
-      return databasePath!;
-    }
-    // Chrome has no application-support directory plugin. IndexedDB uses the
-    // database name as the key once databaseFactoryFfiWeb is installed.
-    if (kIsWeb) {
-      return NoctrosConstants.databaseName;
-    }
-    try {
-      final directory = await getApplicationSupportDirectory();
-      return p.join(directory.path, NoctrosConstants.databaseName);
-    } catch (_) {
-      return p.join(await getDatabasesPath(), NoctrosConstants.databaseName);
-    }
+  Future<String> _resolveDatabasePath() {
+    return resolveNoctrosDatabasePath(
+      overridePath: databasePath,
+      databaseName: NoctrosConstants.databaseName,
+    );
   }
 
   Future<Database> _openDatabase() async {

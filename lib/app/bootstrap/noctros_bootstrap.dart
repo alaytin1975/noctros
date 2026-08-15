@@ -1,3 +1,4 @@
+import '../../core/platform/optional_env_loader.dart';
 import '../../core/platform/storage_factory.dart';
 import '../../data/local/database/noctros_database.dart';
 import '../../data/local/seed/communication_seed.dart';
@@ -9,6 +10,7 @@ import '../di/service_locator.dart';
 abstract final class NoctrosBootstrap {
   static Future<void> initialize() async {
     configureStorageFactory();
+    await OptionalEnvLoader.load();
     await ServiceLocator.registerCoreServices();
     await ServiceLocator.get<SecureStorageService>().warmUp();
     final database = ServiceLocator.get<NoctrosDatabase>();
