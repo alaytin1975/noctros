@@ -1,10 +1,8 @@
-import 'main_native.dart' as impl
-    if (dart.library.ui_web) 'main_web.dart'
-    if (dart.library.html) 'main_web.dart'
-    if (dart.library.js_interop) 'main_web.dart'
-    if (dart.library.js_util) 'main_web.dart';
+import 'main_web.dart' as impl
+    if (dart.library.io) 'main_native.dart';
 
-/// Flutter web compilers always provide [dart:ui_web] (see the generated
-/// `web_entrypoint` that imports it). That condition is checked first so
-/// Chrome binds the browser entry and never the native filesystem entry.
+/// Web is the default library. `dart.library.io` is marked
+/// `support_conditional_import: false` on dart2js and DDC, so Chrome keeps
+/// [main_web.dart]. The VM/native compilers do support that condition and
+/// bind [main_native.dart].
 Future<void> main() => impl.main();

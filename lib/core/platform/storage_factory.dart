@@ -1,8 +1,4 @@
-// Flutter web always has dart:ui_web. That condition is first so Chrome
-// cannot bind the dart:io / native sqflite implementation.
+// Web is the default. dart.library.io is not a web conditional-import
+// (support_conditional_import: false on dart2js/DDC).
 export 'storage_factory_web.dart'
-    if (dart.library.ui_web) 'storage_factory_web.dart'
-    if (dart.library.html) 'storage_factory_web.dart'
-    if (dart.library.js_interop) 'storage_factory_web.dart'
-    if (dart.library.js_util) 'storage_factory_web.dart'
     if (dart.library.io) 'storage_factory_io.dart';

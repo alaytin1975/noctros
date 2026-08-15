@@ -58,25 +58,22 @@ void main() {
     expect(source.contains('path_provider'), isFalse);
   });
 
-  test('conditional exports select ui_web before dart.library.io', () {
-    final condition = RegExp(r'if \(dart\.library\.(\w+)\)');
-    for (final path in _webFirstExports) {
+  test('web implementations are the default; IO is opt-in only', () {
+    for (final path in [
+      ..._webFirstExports,
+      'lib/main.dart',
+    ]) {
       final source = File(path).readAsStringSync();
-      final libraries =
-          condition.allMatches(source).map((match) => match.group(1)!).toList();
-      expect(
-        libraries,
-        ['ui_web', 'html', 'js_interop', 'js_util', 'io'],
-        reason: path,
-      );
+      expect(source.contains("'main_web.dart'") || source.contains('_web.dart'), isTrue, reason: path);
+      final firstExport = RegExp(r"export '([^']+)'").firstMatch(source);
+      final firstImport = RegExp(r"import '([^']+)'").firstMatch(source);
+      if (path == 'lib/main.dart') {
+        expect(firstImport?.group(1), 'main_web.dart');
+      } else if (path != 'lib/core/platform/secure_kv_store.dart') {
+        expect(firstExport?.group(1), contains('_web.dart'), reason: path);
+      }
+      expect(source.contains('if (dart.library.io)'), isTrue, reason: path);
     }
-
-    final mainLibraries = condition
-        .allMatches(File('lib/main.dart').readAsStringSync())
-        .map((match) => match.group(1)!)
-        .toList();
-    expect(mainLibraries.first, 'ui_web');
-    expect(mainLibraries.contains('io'), isFalse);
   });
 
   test('IO path lookup does not catch plugin failures', () {
