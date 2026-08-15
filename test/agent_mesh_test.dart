@@ -75,6 +75,8 @@ Future<AgentMesh> _startMesh({
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('agent bus delivers a direct reply to the requester', () async {
     final bus = AgentBus();
     final query = bus.compose(
