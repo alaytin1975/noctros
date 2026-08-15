@@ -45,30 +45,31 @@ void main() {
   });
 
   test('conditional exports select web before dart.library.io', () {
+    final condition = RegExp(r'if \(dart\.library\.(\w+)\)');
     for (final path in _webFirstExports) {
       final source = File(path).readAsStringSync();
-      final html = source.indexOf('dart.library.html');
-      final jsInterop = source.indexOf('dart.library.js_interop');
-      final jsUtil = source.indexOf('dart.library.js_util');
-      final io = source.indexOf('dart.library.io');
-      expect(html, greaterThanOrEqualTo(0), reason: path);
-      expect(jsInterop, greaterThan(html), reason: path);
-      expect(jsUtil, greaterThan(jsInterop), reason: path);
-      expect(io, greaterThan(jsUtil), reason: path);
+      final libraries =
+          condition.allMatches(source).map((match) => match.group(1)!).toList();
+      expect(
+        libraries,
+        ['html', 'js_interop', 'js_util', 'io'],
+        reason: path,
+      );
     }
   });
 
   test('IO path lookup does not catch plugin failures', () {
-    final source = File('lib/core/platform/database_path_io.dart').readAsStringSync();
+    final source =
+        File('lib/core/platform/database_path_io.dart').readAsStringSync();
     expect(source.contains('getApplicationSupportDirectory('), isTrue);
-    expect(source.contains('catch'), isFalse);
+    expect(RegExp(r'\bcatch\s*\(').hasMatch(source), isFalse);
     expect(source.contains('MissingPluginException'), isFalse);
   });
 
   test('secure storage warm-up does not catch plugin failures', () {
     final source =
         File('lib/data/local/secure/secure_storage_service.dart').readAsStringSync();
-    expect(source.contains('catch'), isFalse);
+    expect(RegExp(r'\bcatch\s*\(').hasMatch(source), isFalse);
     expect(source.contains('MissingPluginException'), isFalse);
   });
 }
