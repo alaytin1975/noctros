@@ -50,4 +50,25 @@ void main() {
     expect(find.text('All contacts'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
   });
+
+  testWidgets('Assistant opens the Hive of connected agents', (tester) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: NoctrosApp(),
+      ),
+    );
+    await _settleAsyncUi(tester);
+
+    await tester.tap(find.text('Assistant').last);
+    await _settleAsyncUi(tester);
+
+    expect(find.text('Open the Hive'), findsOneWidget);
+
+    await tester.tap(find.text('Open the Hive'));
+    await _settleAsyncUi(tester);
+
+    expect(find.text('One autonomous system'), findsOneWidget);
+    expect(find.text('Conductor'), findsWidgets);
+    expect(find.text('Coder'), findsWidgets);
+  });
 }

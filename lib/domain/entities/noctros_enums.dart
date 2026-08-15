@@ -38,6 +38,44 @@ enum PrivacyCloudPolicy {
   whenRequired,
 }
 
+/// Specialist roles in the Noctros Hive — one autonomous system.
+enum AgentRole {
+  conductor,
+  planner,
+  architect,
+  coder,
+  reviewer,
+  memory,
+  voice,
+  emergency,
+  inference,
+  automation,
+}
+
+enum AgentMessageKind {
+  broadcast,
+  task,
+  query,
+  reply,
+  status,
+  artifact,
+  handoff,
+}
+
+enum AgentSessionStatus {
+  idle,
+  running,
+  completed,
+  failed,
+}
+
+enum AgentActivity {
+  idle,
+  listening,
+  thinking,
+  speaking,
+}
+
 enum ThreadMessageStatus {
   sending,
   sent,

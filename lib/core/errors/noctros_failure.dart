@@ -31,3 +31,7 @@ final class VoiceFailure extends NoctrosFailure {
 final class EmergencyFailure extends NoctrosFailure {
   const EmergencyFailure(super.message, {super.cause});
 }
+
+final class AgentFailure extends NoctrosFailure {
+  const AgentFailure(super.message, {super.cause});
+}

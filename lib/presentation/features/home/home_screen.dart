@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../widgets/atmosphere_scaffold.dart';
 import '../chat/chat_screen.dart';
 import '../emergency/emergency_screen.dart';
-import '../../widgets/atmosphere_scaffold.dart';
+import '../hive/hive_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -67,6 +68,15 @@ class HomeScreen extends StatelessWidget {
                   onPressed: () => context.push(ChatScreen.routePath),
                   icon: const Icon(Icons.chat_rounded),
                   label: const Text('Talk to Noctros'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: () => context.push(HiveScreen.routePath),
+                  icon: const Icon(Icons.hub_rounded),
+                  label: const Text('Open the Hive'),
                 ),
               ),
               const SizedBox(height: 12),
