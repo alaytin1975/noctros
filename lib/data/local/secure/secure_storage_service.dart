@@ -1,12 +1,12 @@
 import 'package:encrypt/encrypt.dart' as encrypt;
 
-import '../../../core/platform/secure_kv_store.dart';
+import '../../../core/platform/secure_kv_store_api.dart';
 
 /// Wraps secure storage and provides encryption key management for local data.
 class SecureStorageService {
   SecureStorageService({
-    SecureKvStore? store,
-  }) : _store = store ?? createSecureKvStore();
+    required SecureKvStore store,
+  }) : _store = store;
 
   static const _encryptionKeyName = 'noctros_secure_db_key';
 

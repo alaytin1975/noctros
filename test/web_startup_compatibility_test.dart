@@ -20,6 +20,10 @@ const _bannedInWebCompiledSources = [
   'import "dart:io"',
 ];
 
+bool _isNativeOnly(String path) {
+  return path.endsWith('_io.dart') || path.endsWith('main_native.dart');
+}
+
 void main() {
   test('web-compiled Dart never reaches native filesystem or plugin APIs', () {
     final lib = Directory('lib');
@@ -30,7 +34,7 @@ void main() {
       if (entity is! File || !entity.path.endsWith('.dart')) {
         continue;
       }
-      if (entity.path.endsWith('_io.dart')) {
+      if (_isNativeOnly(entity.path)) {
         continue;
       }
       final source = entity.readAsStringSync();
@@ -44,7 +48,17 @@ void main() {
     expect(violations, isEmpty, reason: violations.join('\n'));
   });
 
-  test('conditional exports select web before dart.library.io', () {
+  test('Chrome entry imports web storage files only', () {
+    final source = File('lib/main_web.dart').readAsStringSync();
+    expect(source.contains('database_path_web.dart'), isTrue);
+    expect(source.contains('storage_factory_web.dart'), isTrue);
+    expect(source.contains('secure_kv_store_web.dart'), isTrue);
+    expect(source.contains('main_native.dart'), isFalse);
+    expect(source.contains('database_path_io.dart'), isFalse);
+    expect(source.contains('path_provider'), isFalse);
+  });
+
+  test('conditional exports select ui_web before dart.library.io', () {
     final condition = RegExp(r'if \(dart\.library\.(\w+)\)');
     for (final path in _webFirstExports) {
       final source = File(path).readAsStringSync();
@@ -52,10 +66,17 @@ void main() {
           condition.allMatches(source).map((match) => match.group(1)!).toList();
       expect(
         libraries,
-        ['html', 'js_interop', 'js_util', 'io'],
+        ['ui_web', 'html', 'js_interop', 'js_util', 'io'],
         reason: path,
       );
     }
+
+    final mainLibraries = condition
+        .allMatches(File('lib/main.dart').readAsStringSync())
+        .map((match) => match.group(1)!)
+        .toList();
+    expect(mainLibraries.first, 'ui_web');
+    expect(mainLibraries.contains('io'), isFalse);
   });
 
   test('IO path lookup does not catch plugin failures', () {

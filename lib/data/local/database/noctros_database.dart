@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:sqflite_common/sqflite.dart';
 
 import '../../../core/constants/noctros_constants.dart';
-import '../../../core/platform/database_path.dart';
+import '../../../core/platform/storage_bindings.dart';
 import '../../../domain/entities/noctros_enums.dart';
 
 class ConversationRecord {
@@ -143,10 +143,14 @@ class CallRecordRow {
 }
 
 class NoctrosDatabase {
-  NoctrosDatabase({this.databasePath});
+  NoctrosDatabase({
+    this.databasePath,
+    DatabasePathResolver? resolvePath,
+  }) : _resolvePath = resolvePath;
 
-  /// Optional absolute path for tests. When null, uses app support directory.
+  /// Optional absolute path for tests. When null, uses [resolvePath].
   final String? databasePath;
+  final DatabasePathResolver? _resolvePath;
 
   Database? _database;
 
@@ -441,7 +445,17 @@ class NoctrosDatabase {
   }
 
   Future<String> _resolveDatabasePath() {
-    return resolveNoctrosDatabasePath(
+    final overridePath = databasePath;
+    if (overridePath != null) {
+      return Future<String>.value(overridePath);
+    }
+    final resolvePath = _resolvePath;
+    if (resolvePath == null) {
+      throw StateError(
+        'NoctrosDatabase needs databasePath or a platform path resolver.',
+      );
+    }
+    return resolvePath(
       overridePath: databasePath,
       databaseName: NoctrosConstants.databaseName,
     );

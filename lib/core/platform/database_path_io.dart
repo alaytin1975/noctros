@@ -3,8 +3,8 @@ import 'package:path_provider/path_provider.dart';
 
 /// Native database path for iOS, Android, macOS, Windows, and Linux.
 ///
-/// This file is never selected by a web compiler. Do not catch plugin
-/// failures here; a missing path_provider plugin must surface immediately.
+/// This file is imported only by [main_native.dart]. Chrome compiles
+/// [main_web.dart] instead, so this function is not part of the web graph.
 Future<String> resolveNoctrosDatabasePath({
   required String? overridePath,
   required String databaseName,
