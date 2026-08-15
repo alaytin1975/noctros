@@ -13,6 +13,10 @@ class SecureStorageService {
               iOptions: IOSOptions(
                 accessibility: KeychainAccessibility.first_unlock,
               ),
+              webOptions: WebOptions(
+                dbName: 'noctros_secure',
+                publicKey: 'noctros',
+              ),
             );
 
   static const _encryptionKeyName = 'noctros_secure_db_key';

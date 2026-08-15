@@ -44,11 +44,18 @@ class VoiceEngine {
   VoiceEngine({
     SpeechToText? speechToText,
     FlutterTts? flutterTts,
-  })  : _speechToText = speechToText ?? SpeechToText(),
-        _flutterTts = flutterTts ?? FlutterTts();
+  })  : _speechToTextOverride = speechToText,
+        _flutterTtsOverride = flutterTts;
 
-  final SpeechToText _speechToText;
-  final FlutterTts _flutterTts;
+  final SpeechToText? _speechToTextOverride;
+  final FlutterTts? _flutterTtsOverride;
+  SpeechToText? _speechToText;
+  FlutterTts? _flutterTts;
+
+  SpeechToText get _speech =>
+      _speechToText ??= _speechToTextOverride ?? SpeechToText();
+
+  FlutterTts get _tts => _flutterTts ??= _flutterTtsOverride ?? FlutterTts();
 
   VoiceSession _session = const VoiceSession(state: VoiceSessionState.idle);
   List<String> _wakeWords = NoctrosConstants.defaultWakeWords;
@@ -57,12 +64,12 @@ class VoiceEngine {
 
   Future<void> initialize({List<String>? wakeWords}) async {
     _wakeWords = wakeWords ?? NoctrosConstants.defaultWakeWords;
-    final available = await _speechToText.initialize();
+    final available = await _speech.initialize();
     if (!available) {
       throw const VoiceFailure('Speech recognition is unavailable on this device.');
     }
-    await _flutterTts.setSpeechRate(0.48);
-    await _flutterTts.setPitch(1.0);
+    await _tts.setSpeechRate(0.48);
+    await _tts.setPitch(1.0);
   }
 
   Future<void> startListening({
@@ -75,7 +82,7 @@ class VoiceEngine {
       finalTranscript: '',
     );
 
-    await _speechToText.listen(
+    await _speech.listen(
       onResult: (result) {
         final words = result.recognizedWords.trim();
         if (result.finalResult) {
@@ -98,14 +105,14 @@ class VoiceEngine {
   }
 
   Future<void> stopListening() async {
-    await _speechToText.stop();
+    await _speech.stop();
     _session = _session.copyWith(state: VoiceSessionState.idle);
   }
 
   Future<void> speak(String text, {String languageCode = 'en-US'}) async {
     _session = _session.copyWith(state: VoiceSessionState.speaking);
-    await _flutterTts.setLanguage(languageCode);
-    await _flutterTts.speak(text);
+    await _tts.setLanguage(languageCode);
+    await _tts.speak(text);
     _session = _session.copyWith(state: VoiceSessionState.idle);
   }
 
