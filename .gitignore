@@ -19,9 +19,11 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Secrets
-.env
-.env.*
+# Secrets at the repo root only. web/assets/.env is a public placeholder
+# so Flutter Chrome does not 404 on assets/.env during engine startup.
+/.env
+/.env.*
+!web/assets/.env
 *.keystore
 *.jks
 google-services.json

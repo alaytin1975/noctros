@@ -3,7 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:noctros/app/bootstrap/noctros_bootstrap.dart';
 import 'package:noctros/app/noctros_app.dart';
+import 'package:noctros/core/platform/database_path_io.dart';
+import 'package:noctros/core/platform/secure_kv_store_io.dart';
+import 'package:noctros/core/platform/storage_factory_io.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'support/vm_plugin_fakes.dart';
 
 Future<void> _settleAsyncUi(WidgetTester tester) async {
   for (var i = 0; i < 20; i++) {
@@ -18,9 +23,14 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+    installVmPluginFakes();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    await NoctrosBootstrap.initialize();
+    await NoctrosBootstrap.initialize(
+      configureStorage: configureStorageFactory,
+      resolveDatabasePath: resolveNoctrosDatabasePath,
+      createSecureStore: createSecureKvStore,
+    );
   });
 
   testWidgets('Messages inbox renders seeded conversations', (tester) async {

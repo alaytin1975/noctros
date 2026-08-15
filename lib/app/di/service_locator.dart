@@ -1,3 +1,4 @@
+import '../../core/platform/storage_bindings.dart';
 import '../../data/local/database/noctros_database.dart';
 import '../../data/local/secure/secure_storage_service.dart';
 import '../../data/repositories/ai_repository_impl.dart';
@@ -24,9 +25,16 @@ typedef ServiceFactory<T> = T Function();
 abstract final class ServiceLocator {
   static final Map<Type, Object> _instances = {};
 
-  static Future<void> registerCoreServices() async {
-    _registerSingleton<SecureStorageService>(SecureStorageService.new);
-    _registerSingleton<NoctrosDatabase>(() => NoctrosDatabase());
+  static Future<void> registerCoreServices({
+    required DatabasePathResolver resolveDatabasePath,
+    required SecureKvStoreFactory createSecureStore,
+  }) async {
+    _registerSingleton<SecureStorageService>(
+      () => SecureStorageService(store: createSecureStore()),
+    );
+    _registerSingleton<NoctrosDatabase>(
+      () => NoctrosDatabase(resolvePath: resolveDatabasePath),
+    );
 
     _registerSingleton<LocalAiProvider>(LocalAiProvider.new);
     _registerSingleton<CloudAiProvider>(CloudAiProvider.new);

@@ -1,16 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'main_web.dart' as impl
+    if (dart.library.io) 'main_native.dart';
 
-import 'app/bootstrap/noctros_bootstrap.dart';
-import 'app/noctros_app.dart';
-
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await NoctrosBootstrap.initialize();
-
-  runApp(
-    const ProviderScope(
-      child: NoctrosApp(),
-    ),
-  );
-}
+/// Web is the default library. `dart.library.io` is marked
+/// `support_conditional_import: false` on dart2js and DDC, so Chrome keeps
+/// [main_web.dart]. The VM/native compilers do support that condition and
+/// bind [main_native.dart].
+Future<void> main() => impl.main();

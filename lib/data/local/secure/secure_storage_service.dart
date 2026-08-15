@@ -1,32 +1,20 @@
 import 'package:encrypt/encrypt.dart' as encrypt;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../../../core/platform/secure_kv_store_api.dart';
 
 /// Wraps secure storage and provides encryption key management for local data.
 class SecureStorageService {
   SecureStorageService({
-    FlutterSecureStorage? storage,
-  }) : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(
-                encryptedSharedPreferences: true,
-              ),
-              iOptions: IOSOptions(
-                accessibility: KeychainAccessibility.first_unlock,
-              ),
-            );
+    required SecureKvStore store,
+  }) : _store = store;
 
   static const _encryptionKeyName = 'noctros_secure_db_key';
 
-  final FlutterSecureStorage _storage;
+  final SecureKvStore _store;
   encrypt.Key? _databaseKey;
 
   Future<void> warmUp() async {
-    try {
-      _databaseKey = await _loadOrCreateDatabaseKey();
-    } catch (_) {
-      // Widget/unit tests and unsupported hosts fall back to a local key.
-      _databaseKey = encrypt.Key.fromUtf8('noctros-dev-secure-storage-key!');
-    }
+    _databaseKey = await _loadOrCreateDatabaseKey();
   }
 
   encrypt.Key get databaseKey {
@@ -37,23 +25,22 @@ class SecureStorageService {
     return key;
   }
 
-  Future<String?> read(String key) => _storage.read(key: key);
+  Future<String?> read(String key) => _store.read(key);
 
-  Future<void> write(String key, String value) =>
-      _storage.write(key: key, value: value);
+  Future<void> write(String key, String value) => _store.write(key, value);
 
-  Future<void> delete(String key) => _storage.delete(key: key);
+  Future<void> delete(String key) => _store.delete(key);
 
   Future<encrypt.Key> _loadOrCreateDatabaseKey() async {
-    final existing = await _storage.read(key: _encryptionKeyName);
+    final existing = await _store.read(_encryptionKeyName);
     if (existing != null && existing.length == 32) {
       return encrypt.Key.fromUtf8(existing);
     }
 
     final generated = encrypt.Key.fromSecureRandom(32);
-    await _storage.write(
-      key: _encryptionKeyName,
-      value: String.fromCharCodes(generated.bytes),
+    await _store.write(
+      _encryptionKeyName,
+      String.fromCharCodes(generated.bytes),
     );
     return generated;
   }

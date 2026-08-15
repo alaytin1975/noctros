@@ -1,11 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common/sqflite.dart';
 
 import '../../../core/constants/noctros_constants.dart';
+import '../../../core/platform/storage_bindings.dart';
 import '../../../domain/entities/noctros_enums.dart';
 
 class ConversationRecord {
@@ -145,10 +143,14 @@ class CallRecordRow {
 }
 
 class NoctrosDatabase {
-  NoctrosDatabase({this.databasePath});
+  NoctrosDatabase({
+    this.databasePath,
+    DatabasePathResolver? resolvePath,
+  }) : _resolvePath = resolvePath;
 
-  /// Optional absolute path for tests. When null, uses app support directory.
+  /// Optional absolute path for tests. When null, uses [resolvePath].
   final String? databasePath;
+  final DatabasePathResolver? _resolvePath;
 
   Database? _database;
 
@@ -442,16 +444,21 @@ class NoctrosDatabase {
     return rows.map(_mapCall).toList();
   }
 
-  Future<String> _resolveDatabasePath() async {
-    if (databasePath != null) {
-      return databasePath!;
+  Future<String> _resolveDatabasePath() {
+    final overridePath = databasePath;
+    if (overridePath != null) {
+      return Future<String>.value(overridePath);
     }
-    try {
-      final directory = await getApplicationSupportDirectory();
-      return p.join(directory.path, NoctrosConstants.databaseName);
-    } catch (_) {
-      return p.join(Directory.systemTemp.path, NoctrosConstants.databaseName);
+    final resolvePath = _resolvePath;
+    if (resolvePath == null) {
+      throw StateError(
+        'NoctrosDatabase needs databasePath or a platform path resolver.',
+      );
     }
+    return resolvePath(
+      overridePath: databasePath,
+      databaseName: NoctrosConstants.databaseName,
+    );
   }
 
   Future<Database> _openDatabase() async {
