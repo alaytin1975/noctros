@@ -1,50 +1,80 @@
 # Noctros
 
-Noctros is an iPhone-ready Flutter communication app — messages, calls, contacts, and a voice-first AI assistant in one place.
+Noctros is a voice-first AI communication app (messages, calls, contacts, and an autonomous agent Hive). This branch is a **Windows-first clean reset**.
 
-## Features
+## Supported platforms
 
-- **Messages** — inbox, threaded chat, compose new conversations
-- **Calls** — audio/video call UI with call history
-- **Contacts** — favorites, search, quick message/call actions
-- **Assistant** — talk to Noctros (local-first AI) and emergency tools
-- **Privacy** — encrypted local storage, opt-in memory, cloud only when permitted
+| Platform         | Status this branch                  | SQLite backend             |
+| ---------------- | ----------------------------------- | -------------------------- |
+| Windows desktop  | Primary target — build and verify.  | `sqflite_common_ffi`       |
+| Linux desktop    | Working (used as CI proxy).         | `sqflite_common_ffi`       |
+| macOS desktop    | Should work; not tested this reset. | native `sqflite` plugin    |
+| iOS / Android    | Should work; not tested this reset. | native `sqflite` plugin    |
+| Web / Chrome     | **Intentionally not supported.**    | `PlatformStorage` throws.  |
+
+Web will be re-added later behind a proper storage abstraction. Do not run
+`flutter run -d chrome` against this branch — it will `UnsupportedError` at
+startup by design.
 
 ## Requirements
 
-- Flutter SDK 3.24+
-- Dart 3.5+
-- Xcode for iPhone builds
+- Flutter SDK 3.24 or newer
+- Dart 3.5 or newer
+- For Windows: Visual Studio 2022 with the *"Desktop development with C++"* workload
+- For Linux: `ninja-build`, `libgtk-3-dev`, `libepoxy-dev`, `pkg-config`
 
-## Setup
+## Run on Windows
 
-```bash
+```powershell
 git clone <repo-url> noctros
 cd noctros
+flutter clean
 flutter pub get
-flutter run -d ios
+flutter run -d windows
 ```
 
-## Architecture
+## Storage architecture
 
-Clean Architecture with independent engines:
+There is one entry point for storage init: `lib/app/platform/platform_storage.dart`.
+
+```
+main.dart
+  → NoctrosBootstrap.initialize()
+      → PlatformStorage.initializeAndResolvePath(...)
+           - Windows/Linux : sqflite_common_ffi + path_provider
+           - macOS/iOS/Android : sqflite plugin + path_provider
+           - Web : throws UnsupportedError (never calls path_provider)
+      → ServiceLocator.registerCoreServices(databasePath: ...)
+      → SecureStorageService.warmUp()  // flutter_secure_storage
+      → NoctrosDatabase.open()
+      → CommunicationSeed.ensureSeeded(db)
+      → AgentMesh.start()
+```
+
+No conditional imports. No dual `main_*.dart`. No `_web`/`_io`/`_stub` split.
+
+## Code layout
 
 ```
 lib/
-├── app/           # Bootstrap, routing, dependency injection
-├── core/          # Shared utilities, errors, network, security
-├── domain/        # Entities, repository contracts, use cases
-├── data/          # Data sources, models, repository implementations
-├── presentation/  # UI, themes, feature screens
-└── engines/       # AI, Voice, Memory, Emergency, Automation
+├── app/
+│   ├── bootstrap/       # initialize() startup pipeline
+│   ├── di/              # ServiceLocator singletons
+│   ├── platform/        # PlatformStorage (one place for platform switches)
+│   └── router/          # go_router routes
+├── core/                # constants, errors, utilities
+├── data/                # sqflite database + repositories + seed
+├── domain/              # entities, repositories, use cases
+├── engines/             # AI, voice, memory, emergency, automation, agent Hive
+└── presentation/        # UI, providers, theme, feature screens
 ```
 
-## iPhone notes
+## Verification commands
 
-Privacy usage strings for microphone, camera, speech, contacts, and location are configured in `ios/Runner/Info.plist`. Portrait is the primary phone orientation.
-
-## Wake Words
-
-- "Hey Noctros"
-- "Noctros"
-- Custom wake words (user-configurable)
+```bash
+flutter clean
+flutter pub get
+flutter analyze
+flutter test
+flutter run -d windows   # or `-d linux` for the same desktop code path
+```

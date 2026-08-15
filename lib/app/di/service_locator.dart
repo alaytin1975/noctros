@@ -7,11 +7,11 @@ import '../../data/repositories/memory_repository_impl.dart';
 import '../../data/repositories/settings_repository_impl.dart';
 import '../../domain/repositories/communication_repository.dart';
 import '../../domain/repositories/noctros_repositories.dart';
+import '../../engines/agents/agent_mesh.dart';
 import '../../engines/ai/ai_engine.dart';
 import '../../engines/ai/cloud/cloud_ai_provider.dart';
 import '../../engines/ai/hybrid_ai_router.dart';
 import '../../engines/ai/local/local_ai_provider.dart';
-import '../../engines/agents/agent_mesh.dart';
 import '../../engines/automation/automation_engine.dart';
 import '../../engines/emergency/emergency_engine.dart';
 import '../../engines/memory/memory_engine.dart';
@@ -24,9 +24,13 @@ typedef ServiceFactory<T> = T Function();
 abstract final class ServiceLocator {
   static final Map<Type, Object> _instances = {};
 
-  static Future<void> registerCoreServices() async {
+  static Future<void> registerCoreServices({
+    required String databasePath,
+  }) async {
     _registerSingleton<SecureStorageService>(SecureStorageService.new);
-    _registerSingleton<NoctrosDatabase>(() => NoctrosDatabase());
+    _registerSingleton<NoctrosDatabase>(
+      () => NoctrosDatabase(databasePath: databasePath),
+    );
 
     _registerSingleton<LocalAiProvider>(LocalAiProvider.new);
     _registerSingleton<CloudAiProvider>(CloudAiProvider.new);
