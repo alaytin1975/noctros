@@ -8,6 +8,7 @@ import '../../presentation/features/chat/chat_screen.dart';
 import '../../presentation/features/contacts/contact_detail_screen.dart';
 import '../../presentation/features/contacts/contacts_screen.dart';
 import '../../presentation/features/emergency/emergency_screen.dart';
+import '../../presentation/features/hive/hive_screen.dart';
 import '../../presentation/features/home/home_screen.dart';
 import '../../presentation/features/messages/compose_message_screen.dart';
 import '../../presentation/features/messages/messages_inbox_screen.dart';
@@ -94,6 +95,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     name: ChatScreen.routeName,
                     parentNavigatorKey: _rootNavigatorKey,
                     builder: (context, state) => const ChatScreen(),
+                  ),
+                  GoRoute(
+                    path: 'hive',
+                    name: HiveScreen.routeName,
+                    parentNavigatorKey: _rootNavigatorKey,
+                    builder: (context, state) => const HiveScreen(),
                   ),
                   GoRoute(
                     path: 'emergency',

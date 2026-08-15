@@ -11,6 +11,8 @@ import '../../engines/ai/ai_engine.dart';
 import '../../engines/ai/cloud/cloud_ai_provider.dart';
 import '../../engines/ai/hybrid_ai_router.dart';
 import '../../engines/ai/local/local_ai_provider.dart';
+import '../../engines/agents/agent_mesh.dart';
+import '../../engines/automation/automation_engine.dart';
 import '../../engines/emergency/emergency_engine.dart';
 import '../../engines/memory/memory_engine.dart';
 import '../../engines/voice/voice_engine.dart';
@@ -59,6 +61,16 @@ abstract final class ServiceLocator {
     );
     _registerSingleton<VoiceEngine>(VoiceEngine.new);
     _registerSingleton<EmergencyEngine>(EmergencyEngine.new);
+    _registerSingleton<AutomationEngine>(AutomationEngine.new);
+    _registerSingleton<AgentMesh>(
+      () => AgentMesh.bootstrap(
+        memoryEngine: get<MemoryEngine>(),
+        voiceEngine: get<VoiceEngine>(),
+        emergencyEngine: get<EmergencyEngine>(),
+        aiEngine: get<AiEngine>(),
+        automationEngine: get<AutomationEngine>(),
+      ),
+    );
   }
 
   static void _registerSingleton<T extends Object>(ServiceFactory<T> factory) {
