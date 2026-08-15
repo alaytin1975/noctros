@@ -3,7 +3,6 @@ import 'package:noctros/data/local/database/noctros_database.dart';
 import 'package:noctros/data/local/seed/communication_seed.dart';
 import 'package:noctros/data/repositories/communication_repository_impl.dart';
 import 'package:noctros/domain/entities/noctros_enums.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {

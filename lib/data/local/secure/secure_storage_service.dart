@@ -1,11 +1,12 @@
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// Wraps secure storage and provides encryption key management for local data.
+/// Wraps native secure storage. Errors are not swallowed; if the underlying
+/// keystore plugin is missing on the current platform, callers must decide
+/// how to react.
 class SecureStorageService {
-  SecureStorageService({
-    FlutterSecureStorage? storage,
-  }) : _storage = storage ??
+  SecureStorageService({FlutterSecureStorage? storage})
+      : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(
                 encryptedSharedPreferences: true,
@@ -21,12 +22,7 @@ class SecureStorageService {
   encrypt.Key? _databaseKey;
 
   Future<void> warmUp() async {
-    try {
-      _databaseKey = await _loadOrCreateDatabaseKey();
-    } catch (_) {
-      // Widget/unit tests and unsupported hosts fall back to a local key.
-      _databaseKey = encrypt.Key.fromUtf8('noctros-dev-secure-storage-key!');
-    }
+    _databaseKey = await _loadOrCreateDatabaseKey();
   }
 
   encrypt.Key get databaseKey {

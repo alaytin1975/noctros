@@ -1,11 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
-import '../../../core/constants/noctros_constants.dart';
 import '../../../domain/entities/noctros_enums.dart';
 
 class ConversationRecord {
@@ -144,11 +140,13 @@ class CallRecordRow {
   final int durationSeconds;
 }
 
+/// Owns the on-disk sqflite database. The path is resolved by
+/// [PlatformStorage] before construction; this class never talks to
+/// path_provider directly.
 class NoctrosDatabase {
-  NoctrosDatabase({this.databasePath});
+  NoctrosDatabase({required this.databasePath});
 
-  /// Optional absolute path for tests. When null, uses app support directory.
-  final String? databasePath;
+  final String databasePath;
 
   Database? _database;
 
@@ -347,8 +345,8 @@ class NoctrosDatabase {
       'is_pinned': thread.isPinned ? 1 : 0,
       'is_muted': thread.isMuted ? 1 : 0,
     };
-    // Avoid ConflictAlgorithm.replace: SQLite REPLACE deletes the row first and
-    // cascades away thread_messages via the foreign key.
+    // Avoid ConflictAlgorithm.replace: SQLite REPLACE deletes the row first
+    // and cascades away thread_messages via the foreign key.
     final updated = await db.update(
       'message_threads',
       payload,
@@ -442,22 +440,9 @@ class NoctrosDatabase {
     return rows.map(_mapCall).toList();
   }
 
-  Future<String> _resolveDatabasePath() async {
-    if (databasePath != null) {
-      return databasePath!;
-    }
-    try {
-      final directory = await getApplicationSupportDirectory();
-      return p.join(directory.path, NoctrosConstants.databaseName);
-    } catch (_) {
-      return p.join(Directory.systemTemp.path, NoctrosConstants.databaseName);
-    }
-  }
-
   Future<Database> _openDatabase() async {
-    final path = await _resolveDatabasePath();
     return openDatabase(
-      path,
+      databasePath,
       version: 2,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
