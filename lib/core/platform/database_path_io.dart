@@ -1,7 +1,10 @@
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
 
+/// Native database path for iOS, Android, macOS, Windows, and Linux.
+///
+/// This file is never selected by a web compiler. Do not catch plugin
+/// failures here; a missing path_provider plugin must surface immediately.
 Future<String> resolveNoctrosDatabasePath({
   required String? overridePath,
   required String databaseName,
@@ -9,10 +12,6 @@ Future<String> resolveNoctrosDatabasePath({
   if (overridePath != null) {
     return overridePath;
   }
-  try {
-    final directory = await getApplicationSupportDirectory();
-    return p.join(directory.path, databaseName);
-  } catch (_) {
-    return p.join(await getDatabasesPath(), databaseName);
-  }
+  final directory = await getApplicationSupportDirectory();
+  return p.join(directory.path, databaseName);
 }

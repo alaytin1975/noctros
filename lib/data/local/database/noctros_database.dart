@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common/sqflite.dart';
 
 import '../../../core/constants/noctros_constants.dart';
 import '../../../core/platform/database_path.dart';

@@ -5,6 +5,8 @@ import 'package:noctros/app/bootstrap/noctros_bootstrap.dart';
 import 'package:noctros/app/noctros_app.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/vm_plugin_fakes.dart';
+
 Future<void> _settleAsyncUi(WidgetTester tester) async {
   for (var i = 0; i < 20; i++) {
     await tester.runAsync(
@@ -18,6 +20,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
+    installVmPluginFakes();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     await NoctrosBootstrap.initialize();

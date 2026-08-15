@@ -1,8 +1,8 @@
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
-/// Chrome/web has no path_provider application-support directory and no
-/// native sqflite plugin. IndexedDB-backed sqlite3.wasm is used instead.
+/// Chrome/web uses sqlite3.wasm + IndexedDB. Native sqflite and path_provider
+/// are not imported from this file.
 void configureStorageFactory() {
   databaseFactory = databaseFactoryFfiWeb;
 }

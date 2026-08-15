@@ -2,8 +2,26 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+const _webFirstExports = [
+  'lib/core/platform/database_path.dart',
+  'lib/core/platform/storage_factory.dart',
+  'lib/core/platform/secure_kv_store.dart',
+];
+
+const _bannedInWebCompiledSources = [
+  'package:path_provider/path_provider.dart',
+  'getApplicationSupportDirectory(',
+  'getApplicationDocumentsDirectory(',
+  'getTemporaryDirectory(',
+  'flutter_secure_storage_windows',
+  'package:flutter_secure_storage/flutter_secure_storage.dart',
+  "package:sqflite/sqflite.dart",
+  "import 'dart:io'",
+  'import "dart:io"',
+];
+
 void main() {
-  test('web-compiled Dart never calls path_provider APIs', () {
+  test('web-compiled Dart never reaches native filesystem or plugin APIs', () {
     final lib = Directory('lib');
     expect(lib.existsSync(), isTrue);
 
@@ -16,12 +34,7 @@ void main() {
         continue;
       }
       final source = entity.readAsStringSync();
-      for (final needle in const [
-        'package:path_provider/path_provider.dart',
-        'getApplicationSupportDirectory(',
-        'getApplicationDocumentsDirectory(',
-        'getTemporaryDirectory(',
-      ]) {
+      for (final needle in _bannedInWebCompiledSources) {
         if (source.contains(needle)) {
           violations.add('${entity.path}: $needle');
         }
@@ -29,5 +42,33 @@ void main() {
     }
 
     expect(violations, isEmpty, reason: violations.join('\n'));
+  });
+
+  test('conditional exports select web before dart.library.io', () {
+    for (final path in _webFirstExports) {
+      final source = File(path).readAsStringSync();
+      final html = source.indexOf('dart.library.html');
+      final jsInterop = source.indexOf('dart.library.js_interop');
+      final jsUtil = source.indexOf('dart.library.js_util');
+      final io = source.indexOf('dart.library.io');
+      expect(html, greaterThanOrEqualTo(0), reason: path);
+      expect(jsInterop, greaterThan(html), reason: path);
+      expect(jsUtil, greaterThan(jsInterop), reason: path);
+      expect(io, greaterThan(jsUtil), reason: path);
+    }
+  });
+
+  test('IO path lookup does not catch plugin failures', () {
+    final source = File('lib/core/platform/database_path_io.dart').readAsStringSync();
+    expect(source.contains('getApplicationSupportDirectory('), isTrue);
+    expect(source.contains('catch'), isFalse);
+    expect(source.contains('MissingPluginException'), isFalse);
+  });
+
+  test('secure storage warm-up does not catch plugin failures', () {
+    final source =
+        File('lib/data/local/secure/secure_storage_service.dart').readAsStringSync();
+    expect(source.contains('catch'), isFalse);
+    expect(source.contains('MissingPluginException'), isFalse);
   });
 }
