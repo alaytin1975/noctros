@@ -2,6 +2,13 @@
 
 Noctros is a premium voice-first AI device assistant for smartphones.
 
+## v0.9 highlights
+
+- Voice-first Home: living AI orb, energy waves, equalizer
+- Chatbot conversation: speak or type, same history
+- Settings via Chat (Home stays conversation-only)
+- Wake word: “Noctros” / “Hey Noctros”
+
 ## v0.8 highlights
 
 - Voice-first Home: living AI orb, energy waves, equalizer

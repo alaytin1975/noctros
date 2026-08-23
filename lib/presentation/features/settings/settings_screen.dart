@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../app/di/service_locator.dart';
 import '../../../core/config/openai_config_service.dart';
+import '../../../core/constants/noctros_constants.dart';
 import '../../../domain/entities/noctros_entities.dart';
 import '../../../domain/entities/noctros_enums.dart';
 import '../../../domain/usecases/manage_local_data_use_case.dart';
@@ -80,7 +81,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 12),
             child: Text(
-              'Voice, privacy, and assistant preferences',
+              'Noctros v${NoctrosConstants.appVersion}+${NoctrosConstants.appBuild}',
               style: theme.textTheme.bodyMedium,
             ),
           ),

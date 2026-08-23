@@ -66,46 +66,46 @@ class DeviceActionEngine {
     try {
       switch (intent.type) {
         case DeviceActionType.call:
-          return _launchCall(intent);
+          return await _launchCall(intent);
         case DeviceActionType.sms:
-          return _launchSms(intent);
+          return await _launchSms(intent);
         case DeviceActionType.email:
-          return _launchEmail(intent);
+          return await _launchEmail(intent);
         case DeviceActionType.navigate:
-          return _launchNavigation(intent);
+          return await _launchNavigation(intent);
         case DeviceActionType.openBrowser:
-          return _launchBrowser(intent);
+          return await _launchBrowser(intent);
         case DeviceActionType.openSettings:
-          return _launchSettings(intent);
+          return await _launchSettings(intent);
         case DeviceActionType.openContacts:
-          return _launchAndroidAction(
+          return await _launchAndroidAction(
             action: 'android.intent.action.VIEW',
             data: 'content://contacts/people',
             fallbackPackage: knownApps['contacts'],
             summary: 'Opened Contacts',
           );
         case DeviceActionType.openCalendar:
-          return _launchAndroidAction(
+          return await _launchAndroidAction(
             action: 'android.intent.action.MAIN',
             package: knownApps['calendar'],
             summary: 'Opened Calendar',
           );
         case DeviceActionType.openClock:
-          return _launchAndroidAction(
+          return await _launchAndroidAction(
             action: 'android.intent.action.SHOW_ALARMS',
             package: knownApps['clock'],
             summary: 'Opened Clock',
           );
         case DeviceActionType.openCamera:
-          return _launchCamera();
+          return await _launchCamera();
         case DeviceActionType.openGallery:
-          return _launchGallery();
+          return await _launchGallery();
         case DeviceActionType.openApp:
-          return _launchApp(intent);
+          return await _launchApp(intent);
         case DeviceActionType.toggleFlashlight:
-          return _toggleFlashlight(intent);
+          return await _toggleFlashlight(intent);
         case DeviceActionType.playMusic:
-          return _launchMusic(intent);
+          return await _launchMusic(intent);
         case DeviceActionType.enableVoiceMode:
           return const DeviceActionResult(
             success: true,
@@ -600,7 +600,7 @@ class DeviceActionEngine {
 
   Future<bool> _launchUri(Uri uri) async {
     try {
-      return launchUrl(uri, mode: LaunchMode.externalApplication);
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       return false;
     }
